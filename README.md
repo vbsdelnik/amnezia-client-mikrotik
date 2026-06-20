@@ -20,7 +20,7 @@ docker pull vbsdelnik/amneziawg-client-arm:latest
 
 Docker Hub repository:
 
-:contentReference[oaicite:0]{index=0}
+[vbsdelnik/amneziawg-client-arm](https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm)
 
 ## Project Structure
 
@@ -222,5 +222,5 @@ This repository contains only Docker build and deployment files.
 
 AmneziaWG components are distributed under their respective licenses:
 
-- :contentReference[oaicite:1]{index=1}
-- :contentReference[oaicite:2]{index=2}
+- [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go)
+- [amneziawg-tools](https://github.com/amnezia-vpn/amneziawg-tools)
