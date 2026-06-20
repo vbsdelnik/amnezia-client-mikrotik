@@ -45,15 +45,11 @@ ip route list
 
 log "Starting AmneziaWG..."
 
-amneziawg-go "$INTERFACE" &
+awg-quick up "$CONFIG_FILE"
 
 AWG_PID=$!
 
 sleep 2
-
-log "Bringing up tunnel..."
-
-awg-quick up "$CONFIG_FILE"
 
 log "Interface created successfully"
 
