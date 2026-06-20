@@ -1,6 +1,17 @@
+# Python cache
 __pycache__/
 *.pyc
-.DS_Store
-.idea/
-.vscode/
 
+# Generated configs
+*.conf
+*.json
+
+# macOS
+.DS_Store
+
+# Docker
+*.tar
+
+# IDE
+.vscode/
+.idea/

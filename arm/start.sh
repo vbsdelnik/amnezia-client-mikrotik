@@ -47,8 +47,6 @@ log "Starting AmneziaWG..."
 
 awg-quick up "$CONFIG_FILE"
 
-AWG_PID=$!
-
 sleep 2
 
 log "Interface created successfully"
@@ -91,5 +89,5 @@ fi
 
 log "AmneziaWG tunnel is operational"
 
-wait "$AWG_PID"
+tail -f /dev/null
 

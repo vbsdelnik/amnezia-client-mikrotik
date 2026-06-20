@@ -75,6 +75,7 @@ RUN apk add --no-cache \
     iptables \
     iputils \
     openresolv \
+    openrc \
     procps
 
 COPY --from=awg-go-builder \
@@ -107,5 +108,8 @@ HEALTHCHECK \
     CMD awg show awg0 latest-handshakes \
         | awk '{ if ($2 > 0) found=1 } END { exit(found ? 0 : 1) }'
 
-ENTRYPOINT ["/start.sh"]
+RUN sed -i 's/^tty/#tty/' /etc/inittab
+
+ENTRYPOINT ["sh", "-c"]
+CMD ["/sbin/init & sleep 2 && /start.sh && wait"]
 
