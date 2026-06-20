@@ -20,12 +20,14 @@ cleanup() {
     pkill amneziawg-go 2>/dev/null || true
 }
 
-trap cleanup INT TERM
+trap cleanup EXIT INT TERM 
 
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "ERROR: config file not found: $CONFIG_FILE"
     exit 1
 fi
+
+rm -f /etc/resolv.conf
 
 log "Replace ip route to Amnezia Endpoint..."
 
