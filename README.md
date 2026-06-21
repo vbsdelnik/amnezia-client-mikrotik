@@ -2,19 +2,36 @@
 
 Docker container with AmneziaWG client intended for deployment on MikroTik RouterOS Container subsystem.
 
-The project builds a lightweight container image containing:
+The project provides a lightweight container image containing:
 
 * amneziawg-go
 * amneziawg-tools (`awg`, `awg-quick`)
 * startup script (`start.sh`)
-* support for external AWG configuration file
-* automatic route handling
-* tunnel validation
+* automatic tunnel initialization
+* connectivity validation
 * routed LAN support behind MikroTik
+* RouterOS Container compatibility
 
 ---
 
-## Docker Hub
+# Features
+
+* AmneziaWG userspace implementation
+* Automatic tunnel startup
+* Automatic route management
+* Handshake verification
+* Internet connectivity verification
+* External configuration via mounted file
+* Routed LAN support behind MikroTik
+* Optional automatic LAN route installation
+* Configurable handshake timeout
+* Configurable connectivity check target
+* No NAT required inside container
+* Suitable for RouterOS container subsystem
+
+---
+
+# Docker Hub
 
 Official image:
 
@@ -22,7 +39,7 @@ Official image:
 docker pull vbsdelnik/amneziawg-client-arm:latest
 ```
 
-Docker Hub repository:
+Repository:
 
 ```text
 https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm
@@ -30,7 +47,7 @@ https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm
 
 ---
 
-## Project Structure
+# Project Structure
 
 ```text
 .
@@ -50,7 +67,7 @@ Each architecture has its own build directory.
 
 ---
 
-## Supported Architectures
+# Supported Architectures
 
 | Architecture | Status    |
 | ------------ | --------- |
@@ -60,19 +77,19 @@ Each architecture has its own build directory.
 
 ---
 
-## Configuration
+# Configuration
 
-The container expects an external configuration file:
+The container expects an external AWG configuration file:
 
 ```text
 /config/awg.conf
 ```
 
-The configuration file is mounted from RouterOS and is **not embedded into the image**.
+The configuration is mounted from RouterOS and is not embedded into the image.
 
 ---
 
-### Example AWG Client Configuration
+# Example AWG Client Configuration
 
 ```ini
 [Interface]
@@ -82,7 +99,7 @@ PrivateKey = <client-private-key>
 
 [Peer]
 PublicKey = <server-public-key>
-PresharedKey = <psk>
+PresharedKey = <preshared-key>
 Endpoint = vpn.example.com:51820
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
@@ -90,45 +107,55 @@ PersistentKeepalive = 25
 
 ---
 
-## Environment Variables
+# Environment Variables
 
 The container supports optional environment variables supplied through RouterOS `envlist`.
 
-| Variable    | Required | Description                                                 |
-| ----------- | -------- | ----------------------------------------------------------- |
-| CONFIG_FILE | No       | Path to AWG configuration file. Default: `/config/awg.conf` |
-| LOCAL_NET   | No       | LAN network located behind MikroTik                         |
+| Variable          | Required | Default | Description                                   |
+| ----------------- | -------- | ------- | --------------------------------------------- |
+| LOCAL_NET         | No       | —       | LAN network located behind MikroTik           |
+| HANDSHAKE_TIMEOUT | No       | 30      | Time in seconds to wait for initial handshake |
+| PING_TARGET       | No       | 1.1.1.1 | IP address used for connectivity verification |
 
 Example:
 
 ```routeros
 /container/envs
 add list=amneziawg key=LOCAL_NET value=192.168.X.0/24
+add list=amneziawg key=HANDSHAKE_TIMEOUT value=60
+add list=amneziawg key=PING_TARGET value=8.8.8.8
 ```
 
-When specified, startup script automatically installs route:
+Environment variables are used by `start.sh`:
+
+```bash
+HANDSHAKE_TIMEOUT="${HANDSHAKE_TIMEOUT:-30}"
+PING_TARGET="${PING_TARGET:-1.1.1.1}"
+```
+
+If `LOCAL_NET` is specified, the container automatically installs route:
 
 ```bash
 ip route add ${LOCAL_NET} via 172.18.20.5
 ```
 
-This allows return traffic from the VPN server to reach networks located behind MikroTik without NAT.
+This allows traffic returning from the VPN server to reach networks located behind MikroTik without using NAT.
 
 ---
 
-## RouterOS Network Topology
+# RouterOS Network Topology
 
-Typical deployment:
+Example deployment:
 
 ```text
                     Internet
                         |
                         |
-               AWG VPS Server
-                  10.8.1.0/24
+                 AWG VPS Server
+                    10.8.1.0/24
                         |
                         |
-                AWG Tunnel (awg)
+                  AWG Tunnel
                         |
                         |
         +--------------------------------+
@@ -138,20 +165,20 @@ Typical deployment:
         +--------------------------------+
                         |
                         |
-                  veth-awg
-                172.18.20.5/30
+                   veth-awg
+                 172.18.20.5/30
                         |
                         |
                  MikroTik Router
                         |
                         |
-                192.168.X.0/24
+                 192.168.X.0/24
                     Local LAN
 ```
 
 ---
 
-## Creating veth Interface
+# Creating veth Interface
 
 Create veth interface on RouterOS:
 
@@ -163,21 +190,16 @@ add \
     gateway=172.18.20.6
 ```
 
-Container side:
+Addresses:
 
-```text
-172.18.20.6/30
-```
-
-RouterOS side:
-
-```text
-172.18.20.5/30
-```
+| Device    | Address        |
+| --------- | -------------- |
+| MikroTik  | 172.18.20.5/30 |
+| Container | 172.18.20.6/30 |
 
 ---
 
-## Mount Configuration
+# Mount Configuration
 
 Create mount:
 
@@ -189,7 +211,7 @@ add \
     dst=/config
 ```
 
-Directory example:
+Directory structure:
 
 ```text
 disk1/config/amneziawg/
@@ -198,18 +220,20 @@ disk1/config/amneziawg/
 
 ---
 
-## Environment List
+# Environment List
 
 Create envlist:
 
 ```routeros
 /container/envs
 add list=amneziawg key=LOCAL_NET value=192.168.X.0/24
+add list=amneziawg key=HANDSHAKE_TIMEOUT value=60
+add list=amneziawg key=PING_TARGET value=8.8.8.8
 ```
 
 ---
 
-## MikroTik RouterOS Deployment
+# Container Deployment
 
 Create container:
 
@@ -237,7 +261,20 @@ View logs:
 
 ---
 
-## Routed Networks Behind MikroTik
+# MikroTik Routing
+
+Route LAN traffic through the container:
+
+```routeros
+/ip/route
+add dst-address=0.0.0.0/0 gateway=172.18.20.6 routing-table=amnezia
+```
+
+Create routing rules according to your deployment requirements.
+
+---
+
+# Routed Networks Behind MikroTik
 
 The recommended deployment model uses routing instead of NAT.
 
@@ -248,12 +285,12 @@ LAN behind MikroTik:
 
 192.168.X.0/24
 
-AWG client address:
+AWG client:
 
 10.8.1.17
 ```
 
-Server peer configuration:
+On the VPS server, update client peer configuration:
 
 ```ini
 [Peer]
@@ -267,15 +304,44 @@ After applying configuration, the server automatically installs route:
 192.168.X.0/24 dev awg0
 ```
 
-allowing direct connectivity to the LAN behind MikroTik.
+This allows direct communication with hosts located behind MikroTik.
 
 No NAT is required.
 
 ---
 
-## Building
+# Server Side Configuration
 
-Change to the desired architecture directory:
+Verify peer configuration:
+
+```bash
+docker exec amnezia-awg2 awg show
+```
+
+Expected:
+
+```text
+peer: <client-public-key>
+allowed ips: 10.8.1.17/32, 192.168.X.0/24
+```
+
+Verify route:
+
+```bash
+docker exec amnezia-awg2 ip route
+```
+
+Expected:
+
+```text
+192.168.X.0/24 dev awg0
+```
+
+---
+
+# Building
+
+Go to architecture directory:
 
 ```bash
 cd arm
@@ -289,7 +355,7 @@ Build image:
 
 ---
 
-## Verify Build
+# Verify Build
 
 List images:
 
@@ -306,13 +372,13 @@ docker run --rm \
   -c 'uname -m'
 ```
 
-Expected output:
+Expected:
 
 ```text
 armv7l
 ```
 
-Verify binaries:
+Verify installed binaries:
 
 ```bash
 docker run --rm \
@@ -327,7 +393,7 @@ docker run --rm \
 
 ---
 
-## Run Locally
+# Run Locally
 
 ```bash
 docker run --rm -it \
@@ -339,42 +405,9 @@ docker run --rm -it \
 
 ---
 
-## Features
+# RouterOS Container Limitations
 
-* AmneziaWG userspace implementation
-* Automatic tunnel startup
-* Automatic route management
-* Tunnel validation
-* Health monitoring
-* External configuration via mounted file
-* Routed LAN support behind MikroTik
-* Optional LOCAL_NET route installation
-* No NAT required
-* Suitable for RouterOS container subsystem
-
----
-
-## Notes
-
-The image does **not** contain:
-
-```text
-/config/awg.conf
-```
-
-The configuration file must always be supplied externally.
-
-Startup process is implemented in:
-
-```text
-start.sh
-```
-
-which is copied into the image and used as container entrypoint.
-
-### RouterOS Container Limitations
-
-RouterOS container subsystem may provide limited netfilter functionality.
+RouterOS container subsystem may not provide full netfilter support.
 
 The following may be unavailable:
 
@@ -382,11 +415,45 @@ The following may be unavailable:
 * iptables-restore
 * nftables
 
-Because of this, routed networking is recommended instead of NAT.
+Because of this, routed networking is preferred over NAT.
 
 ---
 
-## Upgrading
+# Troubleshooting
+
+Check handshake:
+
+```bash
+awg show
+```
+
+Check interface:
+
+```bash
+ip addr show awg
+```
+
+Check routing:
+
+```bash
+ip route
+```
+
+Check connectivity:
+
+```bash
+ping 1.1.1.1
+```
+
+Container logs:
+
+```routeros
+/log/print where message~"amneziawg"
+```
+
+---
+
+# Upgrading
 
 Pull latest image:
 
@@ -394,7 +461,7 @@ Pull latest image:
 docker pull vbsdelnik/amneziawg-client-arm:latest
 ```
 
-Push locally built image:
+Push newly built image:
 
 ```bash
 docker push vbsdelnik/amneziawg-client-arm:latest
@@ -402,9 +469,9 @@ docker push vbsdelnik/amneziawg-client-arm:latest
 
 ---
 
-## License
+# License
 
-This repository contains only Docker build and deployment files.
+This repository contains Docker build and deployment files only.
 
 AmneziaWG components are distributed under their respective licenses:
 
