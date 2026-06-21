@@ -4,11 +4,15 @@ Docker container with AmneziaWG client intended for deployment on MikroTik Route
 
 The project builds a lightweight container image containing:
 
-- amneziawg-go
-- amneziawg-tools (`awg`, `awg-quick`)
-- startup script (`start.sh`)
-- support for external AWG configuration file
-- automatic route handling and tunnel validation
+* amneziawg-go
+* amneziawg-tools (`awg`, `awg-quick`)
+* startup script (`start.sh`)
+* support for external AWG configuration file
+* automatic route handling
+* tunnel validation
+* routed LAN support behind MikroTik
+
+---
 
 ## Docker Hub
 
@@ -20,7 +24,11 @@ docker pull vbsdelnik/amneziawg-client-arm:latest
 
 Docker Hub repository:
 
-[vbsdelnik/amneziawg-client-arm](https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm)
+```text
+https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm
+```
+
+---
 
 ## Project Structure
 
@@ -40,13 +48,17 @@ Docker Hub repository:
 
 Each architecture has its own build directory.
 
+---
+
 ## Supported Architectures
 
-| Architecture | Status |
-|-------------|---------|
-| ARMv7 | Supported |
-| ARM64 | Planned |
-| AMD64 | Planned |
+| Architecture | Status    |
+| ------------ | --------- |
+| ARMv7        | Supported |
+| ARM64        | Planned   |
+| AMD64        | Planned   |
+
+---
 
 ## Configuration
 
@@ -58,23 +70,208 @@ The container expects an external configuration file:
 
 The configuration file is mounted from RouterOS and is **not embedded into the image**.
 
+---
+
+### Example AWG Client Configuration
+
+```ini
+[Interface]
+Address = 10.8.1.17/32
+DNS = 1.1.1.1
+PrivateKey = <client-private-key>
+
+[Peer]
+PublicKey = <server-public-key>
+PresharedKey = <psk>
+Endpoint = vpn.example.com:51820
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+```
+
+---
+
+## Environment Variables
+
+The container supports optional environment variables supplied through RouterOS `envlist`.
+
+| Variable    | Required | Description                                                 |
+| ----------- | -------- | ----------------------------------------------------------- |
+| CONFIG_FILE | No       | Path to AWG configuration file. Default: `/config/awg.conf` |
+| LOCAL_NET   | No       | LAN network located behind MikroTik                         |
+
 Example:
 
 ```routeros
-/container/mounts/add \
-    list=awg \
-    src=awg.conf \
-    dst=/config/awg.conf \
-    comment=awgconf
+/container/envs
+add list=amneziawg key=LOCAL_NET value=192.168.X.0/24
 ```
 
-Attach the mount list to the container:
+When specified, startup script automatically installs route:
+
+```bash
+ip route add ${LOCAL_NET} via 172.18.20.5
+```
+
+This allows return traffic from the VPN server to reach networks located behind MikroTik without NAT.
+
+---
+
+## RouterOS Network Topology
+
+Typical deployment:
+
+```text
+                    Internet
+                        |
+                        |
+               AWG VPS Server
+                  10.8.1.0/24
+                        |
+                        |
+                AWG Tunnel (awg)
+                        |
+                        |
+        +--------------------------------+
+        |      AWG Container             |
+        |      10.8.1.17/32              |
+        |      172.18.20.6/30            |
+        +--------------------------------+
+                        |
+                        |
+                  veth-awg
+                172.18.20.5/30
+                        |
+                        |
+                 MikroTik Router
+                        |
+                        |
+                192.168.X.0/24
+                    Local LAN
+```
+
+---
+
+## Creating veth Interface
+
+Create veth interface on RouterOS:
+
+```routeros
+/interface/veth
+add \
+    name=veth-awg \
+    address=172.18.20.5/30 \
+    gateway=172.18.20.6
+```
+
+Container side:
+
+```text
+172.18.20.6/30
+```
+
+RouterOS side:
+
+```text
+172.18.20.5/30
+```
+
+---
+
+## Mount Configuration
+
+Create mount:
+
+```routeros
+/container/mounts
+add \
+    name=amnezia-config \
+    src=disk1/config/amneziawg \
+    dst=/config
+```
+
+Directory example:
+
+```text
+disk1/config/amneziawg/
+└── awg.conf
+```
+
+---
+
+## Environment List
+
+Create envlist:
+
+```routeros
+/container/envs
+add list=amneziawg key=LOCAL_NET value=192.168.X.0/24
+```
+
+---
+
+## MikroTik RouterOS Deployment
+
+Create container:
 
 ```routeros
 /container/add \
     remote-image=vbsdelnik/amneziawg-client-arm:latest \
-    mounts=awg
+    interface=veth-awg \
+    root-dir=disk1/amneziawg \
+    mounts=amnezia-config \
+    envlist=amneziawg \
+    start-on-boot=yes
 ```
+
+Start container:
+
+```routeros
+/container/start 0
+```
+
+View logs:
+
+```routeros
+/log/print where message~"amneziawg"
+```
+
+---
+
+## Routed Networks Behind MikroTik
+
+The recommended deployment model uses routing instead of NAT.
+
+Example:
+
+```text
+LAN behind MikroTik:
+
+192.168.X.0/24
+
+AWG client address:
+
+10.8.1.17
+```
+
+Server peer configuration:
+
+```ini
+[Peer]
+PublicKey = <client-public-key>
+AllowedIPs = 10.8.1.17/32,192.168.X.0/24
+```
+
+After applying configuration, the server automatically installs route:
+
+```text
+192.168.X.0/24 dev awg0
+```
+
+allowing direct connectivity to the LAN behind MikroTik.
+
+No NAT is required.
+
+---
 
 ## Building
 
@@ -84,13 +281,13 @@ Change to the desired architecture directory:
 cd arm
 ```
 
-Build the image:
+Build image:
 
 ```bash
 ./build.sh
 ```
 
-The script builds and loads the image into the local Docker engine.
+---
 
 ## Verify Build
 
@@ -115,7 +312,7 @@ Expected output:
 armv7l
 ```
 
-Verify installed binaries:
+Verify binaries:
 
 ```bash
 docker run --rm \
@@ -128,9 +325,9 @@ docker run --rm \
   '
 ```
 
-## Run Locally
+---
 
-Example:
+## Run Locally
 
 ```bash
 docker run --rm -it \
@@ -140,49 +337,22 @@ docker run --rm -it \
   vbsdelnik/amneziawg-client-arm:latest
 ```
 
-## MikroTik RouterOS Deployment
-
-Create mount:
-
-```routeros
-/container/mounts/add \
-    list=awg \
-    src=awg.conf \
-    dst=/config/awg.conf
-```
-
-Create container:
-
-```routeros
-/container/add \
-    remote-image=vbsdelnik/amneziawg-client-arm:latest \
-    interface=veth1 \
-    root-dir=disk1/amneziawg \
-    mounts=awg \
-    start-on-boot=yes
-```
-
-Start container:
-
-```routeros
-/container/start 0
-```
-
-View logs:
-
-```routeros
-/log/print where message~"amneziawg"
-```
+---
 
 ## Features
 
-- AmneziaWG userspace implementation
-- Automatic tunnel startup
-- Automatic route management
-- Tunnel validation checks
-- Health monitoring
-- External configuration via mounted file
-- Suitable for RouterOS container subsystem
+* AmneziaWG userspace implementation
+* Automatic tunnel startup
+* Automatic route management
+* Tunnel validation
+* Health monitoring
+* External configuration via mounted file
+* Routed LAN support behind MikroTik
+* Optional LOCAL_NET route installation
+* No NAT required
+* Suitable for RouterOS container subsystem
+
+---
 
 ## Notes
 
@@ -192,15 +362,29 @@ The image does **not** contain:
 /config/awg.conf
 ```
 
-The configuration file must always be supplied externally through RouterOS mounts.
+The configuration file must always be supplied externally.
 
-The startup process is implemented in:
+Startup process is implemented in:
 
 ```text
 start.sh
 ```
 
-which is copied into the image and used as the container entrypoint.
+which is copied into the image and used as container entrypoint.
+
+### RouterOS Container Limitations
+
+RouterOS container subsystem may provide limited netfilter functionality.
+
+The following may be unavailable:
+
+* iptables
+* iptables-restore
+* nftables
+
+Because of this, routed networking is recommended instead of NAT.
+
+---
 
 ## Upgrading
 
@@ -216,11 +400,14 @@ Push locally built image:
 docker push vbsdelnik/amneziawg-client-arm:latest
 ```
 
+---
+
 ## License
 
 This repository contains only Docker build and deployment files.
 
 AmneziaWG components are distributed under their respective licenses:
 
-- [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go)
-- [amneziawg-tools](https://github.com/amnezia-vpn/amneziawg-tools)
+* https://github.com/amnezia-vpn/amneziawg-go
+* https://github.com/amnezia-vpn/amneziawg-tools
+
