@@ -43,6 +43,12 @@ ip route replace \
     via "$REAL_GW" \
     dev "$REAL_IF"
 
+
+if [ -n "$LOCAL_NET" ]; then
+    log "Adding local network route: $LOCAL_NET via 172.18.20.5"
+    ip route replace "$LOCAL_NET" via 172.18.20.5
+fi
+
 log "Starting AmneziaWG..."
 
 awg-quick up "$CONFIG_FILE"
