@@ -43,11 +43,6 @@ ip route replace \
     via "$REAL_GW" \
     dev "$REAL_IF"
 
-log "Replace default gateway..."
-
-ip route del default
-ip route add default dev awg
-
 log "Starting AmneziaWG..."
 
 awg-quick up "$CONFIG_FILE"
@@ -58,6 +53,11 @@ log "Interface created successfully"
 awg show awg || true
 
 sleep 10
+
+log "Replace default gateway..."
+
+ip route del default
+ip route add default dev awg
 
 
 # log "Waiting for handshake..."
