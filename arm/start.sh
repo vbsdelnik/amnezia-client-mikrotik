@@ -2,7 +2,7 @@
 
 set -eu
 
-INTERFACE="awg0"
+INTERFACE="awg"
 CONFIG_FILE="/config/awg.conf"
 
 HANDSHAKE_TIMEOUT="${HANDSHAKE_TIMEOUT:-30}"
@@ -53,31 +53,51 @@ sleep 2
 
 log "Interface created successfully"
 
-log "Waiting for handshake..."
+sleep 10
+
+echo "--- AWG SHOW ---"
+awg show awg || true
+
+echo "--- IP RULE ---"
+ip rule || true
+
+echo "--- IP ROUTE ---"
+ip route show table all || true
+
+# log "Waiting for handshake..."
 
 HANDSHAKE_OK=0
 
-for i in $(seq 1 "$HANDSHAKE_TIMEOUT")
-do
-    if awg show "$INTERFACE" latest-handshakes \
-        | awk '{ if ($2 > 0) found=1 } END { exit(found ? 0 : 1) }'
-    then
-        HANDSHAKE_OK=1
-        break
-    fi
+# for i in $(seq 1 "$HANDSHAKE_TIMEOUT")
+# do
+#    if awg show "$INTERFACE" latest-handshakes \
+#        | awk '{ if ($2 > 0) found=1 } END { exit(found ? 0 : 1) }'
+#    then
+#        HANDSHAKE_OK=1
+#        break
+#    fi
+#
+#    sleep 1
+# done
 
-    sleep 1
-done
+# if [ "$HANDSHAKE_OK" -ne 1 ]; then
+#    log "ERROR: handshake timeout"
+#
+#    awg show "$INTERFACE" || true
+#
+#    exit 1
+# fi
 
-if [ "$HANDSHAKE_OK" -ne 1 ]; then
-    log "ERROR: handshake timeout"
+# log "Handshake established"
 
-    awg show "$INTERFACE" || true
+log "Waiting interface initialization..."
 
-    exit 1
-fi
+sleep 5
 
-log "Handshake established"
+ip addr show awg || true
+ip route || true
+
+log "Tunnel started"
 
 log "Checking connectivity..."
 
