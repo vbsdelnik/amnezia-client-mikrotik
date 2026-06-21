@@ -55,13 +55,19 @@ log "Interface created successfully"
 
 sleep 10
 
-echo "--- AWG SHOW ---"
+
+echo "\n-----IPTABLES---"
+iptables -L -v -n
+iptables-save
+iptables -V
+ls -l /usr/sbin/iptables*
+echo "\n--- AWG SHOW ---"
 awg show awg || true
 
-echo "--- IP RULE ---"
+echo "\n--- IP RULE ---"
 ip rule || true
 
-echo "--- IP ROUTE ---"
+echo "\n--- IP ROUTE ---"
 ip route show table all || true
 
 # log "Waiting for handshake..."
