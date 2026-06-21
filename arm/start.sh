@@ -43,19 +43,6 @@ ip route replace \
     via "$REAL_GW" \
     dev "$REAL_IF"
 
-ip route list
-
-log "Starting AmneziaWG..."
-
-awg-quick up "$CONFIG_FILE"
-
-sleep 2
-
-log "Interface created successfully"
-
-sleep 10
-
-
 echo "\n-----IPTABLES---"
 iptables -L -v -n
 iptables-save
@@ -69,6 +56,18 @@ ip rule || true
 
 echo "\n--- IP ROUTE ---"
 ip route show table all || true
+
+
+log "Starting AmneziaWG..."
+
+awg-quick up "$CONFIG_FILE"
+
+sleep 2
+
+log "Interface created successfully"
+
+sleep 10
+
 
 # log "Waiting for handshake..."
 
