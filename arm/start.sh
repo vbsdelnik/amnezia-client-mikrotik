@@ -43,20 +43,10 @@ ip route replace \
     via "$REAL_GW" \
     dev "$REAL_IF"
 
-echo "\n-----IPTABLES---"
-iptables -L -v -n
-iptables-save
-iptables -V
-ls -l /usr/sbin/iptables*
-echo "\n--- AWG SHOW ---"
-awg show awg || true
+log "Replace default gateway..."
 
-echo "\n--- IP RULE ---"
-ip rule || true
-
-echo "\n--- IP ROUTE ---"
-ip route show table all || true
-
+ip route del default
+ip route add default dev awg
 
 log "Starting AmneziaWG..."
 
@@ -65,6 +55,7 @@ awg-quick up "$CONFIG_FILE"
 sleep 2
 
 log "Interface created successfully"
+awg show awg || true
 
 sleep 10
 
