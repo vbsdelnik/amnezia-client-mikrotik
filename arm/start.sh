@@ -29,6 +29,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 
+chmod 600 "$CONFIG_FILE" 2>/dev/null || true
+
 rm -f /etc/resolv.conf
 resolvconf -u
 
