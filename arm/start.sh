@@ -7,6 +7,8 @@ CONFIG_FILE="/config/awg.conf"
 
 HANDSHAKE_TIMEOUT="${HANDSHAKE_TIMEOUT:-30}"
 PING_TARGET="${PING_TARGET:-1.1.1.1}"
+LOCAL_NET="${LOCAL_NET:-}"
+DEBUG="${DEBUG:-0}"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
@@ -56,11 +58,16 @@ awg-quick up "$CONFIG_FILE"
 sleep 2
 
 log "Interface created successfully"
-awg show awg || true
+
+if [ "$DEBUG" = "1" ]; 
+then
+    awg show "$INTERFACE" || true
+fi
+
 
 sleep 10
 
-log "Replace default gateway: default via $INTERFACE"
+log "Replace default gateway: default via dev $INTERFACE"
 
 ip route replace default dev $INTERFACE
 
@@ -94,8 +101,11 @@ log "Waiting interface initialization..."
 
 sleep 5
 
-ip addr show awg || true
-ip route || true
+if [ "$DEBUG" = "1" ] 
+then
+    ip addr show $INTERFACE || true
+    ip route || true
+fi
 
 log "Tunnel started"
 
