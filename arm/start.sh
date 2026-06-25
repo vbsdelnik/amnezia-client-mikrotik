@@ -108,8 +108,6 @@ then
     ip addr show $INTERFACE || true
     log "[DEBUG] ip route list:" 
     ip route list || true
-    log "[DEBUG] cat /etc/resolv.conf:"
-    cat /etc.resolv.conf
 fi
 
 log "Tunnel started"
