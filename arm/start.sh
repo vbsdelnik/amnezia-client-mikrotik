@@ -30,6 +30,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 rm -f /etc/resolv.conf
+resolvconf -u
 
 VPN_ENDPOINT=$(awk -F' = ' \
     '/^Endpoint/ {print $2}' \
@@ -108,6 +109,8 @@ then
     ip addr show $INTERFACE || true
     log "[DEBUG] ip route list:" 
     ip route list || true
+    log "[DEBUG] cat /etc/resolv.conf:"
+    cat /etc/resolv.conf
 fi
 
 log "Tunnel started"
