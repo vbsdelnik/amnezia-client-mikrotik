@@ -113,7 +113,7 @@ log "Checking connectivity..."
 
 if ping -c 3 -W 2 "$PING_TARGET" >/dev/null 2>&1
 then
-    log "Connectivity verified"
+    log "Connectivity verified: $PING_TARGET is available"
 else
     log "ERROR: connectivity check failed"
     exit 1
