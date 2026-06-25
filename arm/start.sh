@@ -29,14 +29,14 @@ fi
 
 rm -f /etc/resolv.conf
 
-log "Replace ip route to Amnezia Endpoint..."
-
 VPN_ENDPOINT=$(awk -F' = ' \
     '/^Endpoint/ {print $2}' \
     "$CONFIG_FILE" | cut -d: -f1)
 
 REAL_GW=$(ip route | awk '/default/ {print $3; exit}')
 REAL_IF=$(ip route | awk '/default/ {print $5; exit}')
+
+log "Replace ip route to Amnezia Endpoint: $VPN_ENDPOINT via $REAL_GW"
 
 ip route replace \
     "$VPN_ENDPOINT" \
@@ -65,31 +65,29 @@ log "Replace default gateway..."
 ip route replace default dev awg
 
 
-# log "Waiting for handshake..."
+ log "Waiting for handshake..."
 
 HANDSHAKE_OK=0
 
-# for i in $(seq 1 "$HANDSHAKE_TIMEOUT")
-# do
-#    if awg show "$INTERFACE" latest-handshakes \
-#        | awk '{ if ($2 > 0) found=1 } END { exit(found ? 0 : 1) }'
-#    then
-#        HANDSHAKE_OK=1
-#        break
-#    fi
-#
-#    sleep 1
-# done
+for i in $(seq 1 "$HANDSHAKE_TIMEOUT")
+do
+    if awg show "$INTERFACE" latest-handshakes \
+        | awk '{ if ($2 > 0) found=1 } END { exit(found ? 0 : 1) }'
+    then
+        HANDSHAKE_OK=1
+        break
+    fi
 
-# if [ "$HANDSHAKE_OK" -ne 1 ]; then
-#    log "ERROR: handshake timeout"
-#
-#    awg show "$INTERFACE" || true
-#
-#    exit 1
-# fi
+    sleep 1
+ done
 
-# log "Handshake established"
+if [ "$HANDSHAKE_OK" -eq 1 ] 
+then
+    log "Handshake established"
+    awg show "$INTERFACE" latest-handshakes 
+else
+    log "WARNING: handshake was not detected during startup"
+fi
 
 log "Waiting interface initialization..."
 
