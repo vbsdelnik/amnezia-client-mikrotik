@@ -45,8 +45,8 @@ ip route replace \
 
 
 if [ -n "$LOCAL_NET" ]; then
-    log "Adding local network route: $LOCAL_NET via 172.18.20.5"
-    ip route replace "$LOCAL_NET" via 172.18.20.5
+    log "Adding local network route: $LOCAL_NET via $REAL_GW"
+    ip route replace "$LOCAL_NET" via $REAL_GW
 fi
 
 log "Starting AmneziaWG..."
@@ -62,8 +62,7 @@ sleep 10
 
 log "Replace default gateway..."
 
-ip route del default
-ip route add default dev awg
+ip route replace default dev awg
 
 
 # log "Waiting for handshake..."
