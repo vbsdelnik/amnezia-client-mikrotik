@@ -110,6 +110,5 @@ HEALTHCHECK \
 
 RUN sed -i 's/^tty/#tty/' /etc/inittab
 
-ENTRYPOINT ["sh", "-c"]
-CMD ["/sbin/init & sleep 2 && /start.sh && wait"]
+ENTRYPOINT ["/start.sh"]
 
