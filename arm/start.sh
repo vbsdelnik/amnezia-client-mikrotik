@@ -60,12 +60,12 @@ awg show awg || true
 
 sleep 10
 
-log "Replace default gateway..."
+log "Replace default gateway: default via $INTERFACE"
 
-ip route replace default dev awg
+ip route replace default dev $INTERFACE
 
 
- log "Waiting for handshake..."
+log "Waiting for handshake..."
 
 HANDSHAKE_OK=0
 
@@ -84,10 +84,11 @@ do
 if [ "$HANDSHAKE_OK" -eq 1 ] 
 then
     log "Handshake established"
-    awg show "$INTERFACE" latest-handshakes 
+    awg show "$INTERFACE" | grep "latest handshake"
 else
     log "WARNING: handshake was not detected during startup"
 fi
+
 
 log "Waiting interface initialization..."
 
