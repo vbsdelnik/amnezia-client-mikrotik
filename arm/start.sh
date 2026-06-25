@@ -61,6 +61,7 @@ log "Interface created successfully"
 
 if [ "$DEBUG" = "1" ]; 
 then
+    log "[DEBUG] awg show $INTERFACE:"
     awg show "$INTERFACE" || true
 fi
 
@@ -103,8 +104,12 @@ sleep 5
 
 if [ "$DEBUG" = "1" ] 
 then
+    log "[DEBUG] ip addr show $INTERFACE:"
     ip addr show $INTERFACE || true
-    ip route || true
+    log "[DEBUG] ip route list:" 
+    ip route list || true
+    log "[DEBUG] cat /etc/resolv.conf:"
+    cat /etc.resolv.conf
 fi
 
 log "Tunnel started"
