@@ -94,6 +94,7 @@ The configuration is mounted from RouterOS and is not embedded into the image.
 ```ini
 [Interface]
 Address = 10.8.1.17/32
+Table = off
 DNS = 1.1.1.1
 PrivateKey = <client-private-key>
 
