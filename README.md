@@ -321,30 +321,64 @@ No NAT is required inside the client container for this routed topology. Server-
 
 # Server Side Configuration
 
-Verify peer configuration:
+The following instructions apply to the server container `amnezia-awg2`, which loads `/opt/amnezia/awg/awg0.conf` with `awg-quick` and runs the iptables commands in `/opt/amnezia/start.sh` on every startup. Run the commands on the VPS host.
 
-```bash
-docker exec amnezia-awg2 awg show
-```
+Replace `192.168.X.0/24` with your LAN subnet before applying the examples. Keep the actual client tunnel address (shown as `10.8.1.17/32` here) and all other existing AllowedIPs. The examples use `awg0` as the server VPN interface and `eth0` as the server container egress interface.
 
-Expected:
+1. Edit the server configuration and find the client peer by its public key:
 
-```text
-peer: <client-public-key>
-allowed ips: 10.8.1.17/32, 192.168.X.0/24
-```
+   ```bash
+   docker exec -it amnezia-awg2 vim /opt/amnezia/awg/awg0.conf
+   ```
 
-Verify route:
+   Add the LAN subnet to that peer's AllowedIPs:
 
-```bash
-docker exec amnezia-awg2 ip route
-```
+   ```ini
+   [Peer]
+   PublicKey = <client-public-key>
+   AllowedIPs = 10.8.1.17/32,192.168.X.0/24
+   ```
 
-Expected:
+   Keep the peer's keys, other settings and existing AllowedIPs. Add the LAN subnet to the existing AllowedIPs line.
 
-```text
-192.168.X.0/24 dev awg0
-```
+2. Edit the server startup script:
+
+   ```bash
+   docker exec -it amnezia-awg2 vim /opt/amnezia/start.sh
+   ```
+
+   Add this beside the existing FORWARD rules, before `tail -f /dev/null`:
+
+   ```bash
+   iptables -A FORWARD -i awg0 -o eth0 -s 192.168.X.0/24 -j ACCEPT
+   ```
+
+   Add this beside the existing NAT rules, also before `tail -f /dev/null`:
+
+   ```bash
+   iptables -t nat -A POSTROUTING -s 192.168.X.0/24 -o eth0 -j MASQUERADE
+   ```
+
+   Keep the existing rules, including the ESTABLISHED,RELATED forwarding rule. Do not add duplicate LAN rules if they are already present. NAT is performed inside the server container; no NAT is needed inside the client container.
+
+3. Restart the server container to apply both files. This interrupts connections for all clients served by this container:
+
+   ```bash
+   docker restart amnezia-awg2
+   ```
+
+4. Verify the peer, route and firewall rules:
+
+   ```bash
+   docker exec amnezia-awg2 awg show
+   docker exec amnezia-awg2 ip route get 192.168.X.1
+   docker exec amnezia-awg2 iptables -S FORWARD
+   docker exec amnezia-awg2 iptables -t nat -S POSTROUTING
+   ```
+
+   The selected peer must include the LAN in AllowedIPs, and the route to a LAN host must use `awg0`. The server starts the interface with `awg-quick`, which can install the route from AllowedIPs depending on its routing settings; verify the result before adding a route manually. Test Internet access from an actual LAN host routed through the client.
+
+The shown server startup script recreates the firewall rules directly; it does not load an `iptables-save` file. A separate `iptables-save` is not required for this method. These changes remain after restarting the container. Persistence after container recreation depends on the deployment mounts; keep copies before recreating or upgrading the server container.
 
 ---
 
