@@ -208,21 +208,15 @@ Addresses:
 
 # Mount Configuration
 
-Create mount:
+Place `awg.conf` at `/awg.conf` on RouterOS and mount the file into the container:
 
 ```routeros
 /container/mounts
 add \
-    name=amnezia-config \
-    src=disk1/config/amneziawg \
-    dst=/config
-```
-
-Directory structure:
-
-```text
-disk1/config/amneziawg/
-└── awg.conf
+    comment=awgconf \
+    src=/awg.conf \
+    list=amnezia-config \
+    dst=/config/awg.conf
 ```
 
 ---
@@ -248,8 +242,8 @@ Create container:
 /container/add \
     remote-image=vbsdelnik/amneziawg-client-arm:latest \
     interface=veth-awg \
-    root-dir=disk1/amneziawg \
-    mounts=amnezia-config \
+    root-dir=amneziawg \
+    mountlists=amnezia-config \
     envlist=amneziawg \
     start-on-boot=yes
 ```
