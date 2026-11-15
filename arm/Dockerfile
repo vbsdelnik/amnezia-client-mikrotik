@@ -105,7 +105,7 @@ HEALTHCHECK \
     --timeout=5s \
     --start-period=20s \
     --retries=3 \
-    CMD awg show awg0 latest-handshakes \
+    CMD awg show awg latest-handshakes \
         | awk '{ if ($2 > 0) found=1 } END { exit(found ? 0 : 1) }'
 
 RUN sed -i 's/^tty/#tty/' /etc/inittab

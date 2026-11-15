@@ -52,18 +52,13 @@ https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm
 ```text
 .
 ├── README.md
-├── arm/
-│   ├── Dockerfile
-│   ├── build.sh
-│   └── start.sh
-├── arm64/
-│   ├── Dockerfile
-│   ├── build.sh
-│   └── start.sh
-└── ...
+└── arm/
+    ├── Dockerfile
+    ├── build.sh
+    └── start.sh
 ```
 
-Each architecture has its own build directory.
+Only the ARMv7 build directory currently exists. ARM64 and AMD64 builds are planned.
 
 ---
 
@@ -95,16 +90,25 @@ The configuration is mounted from RouterOS and is not embedded into the image.
 [Interface]
 Address = 10.8.1.17/32
 Table = off
-DNS = 1.1.1.1
+DNS = 1.1.1.1, 1.0.0.1
+MTU = 1376
 PrivateKey = <client-private-key>
 
 [Peer]
 PublicKey = <server-public-key>
 PresharedKey = <preshared-key>
-Endpoint = vpn.example.com:51820
+Endpoint = 203.0.113.10:51820
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 ```
+
+Replace the example endpoint with the server IPv4 address and UDP port. The current startup parser expects `Endpoint = IPv4:port` with the spacing shown above; hostname and IPv6 endpoints are not supported by this startup path.
+
+This example shows the configuration structure only. Include the AmneziaWG parameters exported for the target server; the example alone is not a complete AmneziaWG 3.1 profile.
+
+`Table = off` is intentional: `awg-quick` does not install routes. `start.sh` adds a host route to the endpoint through the original gateway, adds the optional LAN route, then replaces the container IPv4 default route with `default dev awg`. This keeps encrypted endpoint traffic outside the tunnel while sending other container traffic through it. It does not change the RouterOS routing tables.
+
+Before bringing up the tunnel, the script removes `/etc/resolv.conf` and runs `resolvconf -u`; `awg-quick` then applies the configuration DNS using openresolv.
 
 ---
 
@@ -137,10 +141,10 @@ PING_TARGET="${PING_TARGET:-1.1.1.1}"
 If `LOCAL_NET` is specified, the container automatically installs route:
 
 ```bash
-ip route add ${LOCAL_NET} via 172.18.20.5
+ip route replace "${LOCAL_NET}" via "${REAL_GW}"
 ```
 
-This allows traffic returning from the VPN server to reach networks located behind MikroTik without using NAT.
+`REAL_GW` is the container default gateway captured before the VPN starts (172.18.20.5 in the topology below). This route directs return traffic toward the LAN through MikroTik rather than back into the tunnel. Server routing and forwarding must also be configured as described below.
 
 ---
 
@@ -166,7 +170,7 @@ Example deployment:
         +--------------------------------+
                         |
                         |
-                   veth-awg
+              MikroTik gateway
                  172.18.20.5/30
                         |
                         |
@@ -187,9 +191,11 @@ Create veth interface on RouterOS:
 /interface/veth
 add \
     name=veth-awg \
-    address=172.18.20.5/30 \
-    gateway=172.18.20.6
+    address=172.18.20.6/30 \
+    gateway=172.18.20.5
 ```
+
+The veth `address` is assigned to the container. The `gateway` must be an address configured on MikroTik on the connected container network; creating the veth alone does not assign that gateway address to RouterOS.
 
 Addresses:
 
@@ -299,15 +305,23 @@ PublicKey = <client-public-key>
 AllowedIPs = 10.8.1.17/32,192.168.X.0/24
 ```
 
-After applying configuration, the server automatically installs route:
+The server must also have a route to the LAN through its AWG interface (named `awg0` in this example):
 
 ```text
 192.168.X.0/24 dev awg0
 ```
 
-This allows direct communication with hosts located behind MikroTik.
+Updating peer `AllowedIPs` alone does not install a Linux route when using `awg set` or `awg setconf`. A configuration manager such as `awg-quick` may install the route depending on its routing settings; verify the actual server routing table.
 
-No NAT is required.
+For routed LAN traffic, verify all of the following:
+
+* The server peer `AllowedIPs` includes both the client tunnel address and LAN subnet.
+* The server route points the LAN subnet into the AWG interface.
+* `LOCAL_NET` is set so the client container installs the LAN return route through MikroTik.
+* IPv4 forwarding is enabled in the container and on the server, and forwarding rules allow the required traffic. `start.sh` does not enable IP forwarding itself.
+* MikroTik routes the selected LAN traffic to the container and permits the return path.
+
+No NAT is required inside the client container for this routed topology. Server-side NAT may still be needed for LAN access to the public Internet, depending on upstream routing.
 
 ---
 
@@ -451,6 +465,16 @@ Container logs:
 ```routeros
 /log/print where message~"amneziawg"
 ```
+
+---
+
+# Runtime Checks
+
+At startup, `start.sh` waits up to `HANDSHAKE_TIMEOUT` seconds for a nonzero `latest-handshakes` timestamp on `awg`. Zero means that no successful handshake has been recorded for that peer since its creation. A timeout produces a warning; the subsequent connectivity ping must succeed or the startup script exits.
+
+The Docker HEALTHCHECK checks the same interface every 30 seconds. It succeeds when at least one peer has a nonzero handshake timestamp. This confirms a past handshake, not current connectivity: the timestamp remains nonzero after a connection is lost.
+
+After startup, the script waits with `tail -f /dev/null`; it does not periodically ping or supervise the VPN process. Docker marks a failed HEALTHCHECK as unhealthy but does not restart the container solely for that status. Do not assume RouterOS executes Docker HEALTHCHECK metadata; verify monitoring and restart behavior on the deployed RouterOS version.
 
 ---
 
