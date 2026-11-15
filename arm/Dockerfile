@@ -2,13 +2,13 @@
 # Stage 1: Build amneziawg-go
 # ============================================================
 
-FROM golang:1.25-alpine3.24 AS awg-go-builder
+FROM golang:1.27.4-alpine3.24 AS awg-go-builder
 
 RUN apk add --no-cache git
 
 WORKDIR /build
 
-ARG AWG_GO_REF=v0.2.18
+ARG AWG_GO_REF=v3.1.20260828
 RUN git clone \
     --branch "$AWG_GO_REF" \
     --depth 1 \
@@ -41,7 +41,7 @@ RUN apk add --no-cache \
 
 WORKDIR /build
 
-ARG AWG_TOOLS_REF=v1.0.20260223
+ARG AWG_TOOLS_REF=v3.1.20260812
 RUN git clone \
     --branch "$AWG_TOOLS_REF" \
     --depth 1 \

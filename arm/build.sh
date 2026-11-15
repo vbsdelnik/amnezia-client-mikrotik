@@ -21,6 +21,7 @@ echo "========================================"
 
 docker buildx build \
     -f "${DOCKERFILE}" \
+    --pull \
     --no-cache \
     --progress plain \
     --platform "${PLATFORM}" \
