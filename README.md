@@ -328,7 +328,7 @@ Replace `192.168.X.0/24` with your LAN subnet before applying the examples. Keep
 1. Edit the server configuration and find the client peer by its public key:
 
    ```bash
-   docker exec -it amnezia-awg2 vim /opt/amnezia/awg/awg0.conf
+   docker exec -it amnezia-awg2 vi /opt/amnezia/awg/awg0.conf
    ```
 
    Add the LAN subnet to that peer's AllowedIPs:
@@ -344,7 +344,7 @@ Replace `192.168.X.0/24` with your LAN subnet before applying the examples. Keep
 2. Edit the server startup script:
 
    ```bash
-   docker exec -it amnezia-awg2 vim /opt/amnezia/start.sh
+   docker exec -it amnezia-awg2 vi /opt/amnezia/start.sh
    ```
 
    Add this beside the existing FORWARD rules, before `tail -f /dev/null`:
