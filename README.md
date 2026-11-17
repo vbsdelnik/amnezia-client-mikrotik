@@ -277,45 +277,26 @@ Create routing rules according to your deployment requirements.
 
 # Routed Networks Behind MikroTik
 
-The recommended deployment model uses routing instead of NAT.
+The client container routes LAN traffic without NAT. NAT for Internet access is configured in the server container.
 
 Example:
 
 ```text
-LAN behind MikroTik:
-
-192.168.X.0/24
-
-AWG client:
-
-10.8.1.17
+LAN behind MikroTik: 192.168.X.0/24
+AWG client address:  10.8.1.17/32
 ```
 
-On the VPS server, update client peer configuration:
+Set `LOCAL_NET` to the LAN subnet so the client container adds a return route through the MikroTik gateway. MikroTik selects which LAN traffic to send through the VPN.
 
-```ini
-[Peer]
-PublicKey = <client-public-key>
-AllowedIPs = 10.8.1.17/32,192.168.X.0/24
-```
+For this setup to work:
 
-The server must also have a route to the LAN through its AWG interface (named `awg0` in this example):
+* The server peer's `AllowedIPs` must include the client tunnel address and LAN subnet.
+* The server must have a route to the LAN through its AWG interface.
+* IPv4 forwarding must be enabled in both the client and server containers, and firewall rules must allow the traffic. The client `start.sh` does not enable forwarding itself.
+* MikroTik must route the selected LAN traffic to the client container and allow return traffic.
+* The server container must have a MASQUERADE rule for the LAN subnet to provide Internet access.
 
-```text
-192.168.X.0/24 dev awg0
-```
-
-Updating peer `AllowedIPs` alone does not install a Linux route when using `awg set` or `awg setconf`. A configuration manager such as `awg-quick` may install the route depending on its routing settings; verify the actual server routing table.
-
-For routed LAN traffic, verify all of the following:
-
-* The server peer `AllowedIPs` includes both the client tunnel address and LAN subnet.
-* The server route points the LAN subnet into the AWG interface.
-* `LOCAL_NET` is set so the client container installs the LAN return route through MikroTik.
-* IPv4 forwarding is enabled in the container and on the server, and forwarding rules allow the required traffic. `start.sh` does not enable IP forwarding itself.
-* MikroTik routes the selected LAN traffic to the container and permits the return path.
-
-No NAT is required inside the client container for this routed topology. Server-side NAT may still be needed for LAN access to the public Internet, depending on upstream routing.
+See [Server Side Configuration](#server-side-configuration) for server configuration and verification steps.
 
 ---
 
