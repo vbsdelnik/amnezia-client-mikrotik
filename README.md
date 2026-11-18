@@ -114,7 +114,7 @@ The container supports optional environment variables supplied through RouterOS 
 
 | Variable          | Required | Default | Description                                   |
 | ----------------- | -------- | ------- | --------------------------------------------- |
-| LOCAL_NET         | No       | —       | LAN network located behind MikroTik           |
+| LOCAL_NET         | No       | —       | LAN IPv4 addresses or CIDRs, separated by commas           |
 | HANDSHAKE_TIMEOUT | No       | 30      | Time in seconds to wait for initial handshake |
 | PING_TARGET       | No       | 1.1.1.1 | IP address used for connectivity verification |
 | DEBUG             | No       | 0       | Set to 1 to print startup diagnostics         |
@@ -128,6 +128,17 @@ add list=amneziawg key=HANDSHAKE_TIMEOUT value=60
 add list=amneziawg key=PING_TARGET value=8.8.8.8
 ```
 
+`LOCAL_NET` accepts one IPv4 address or subnet, or a comma-separated list. Existing single-subnet values continue to work. Spaces around entries are allowed; an address without a prefix is treated as `/32`. All entries use the same original MikroTik gateway.
+
+For multiple entries, use this value instead of the single-subnet `LOCAL_NET` example above (replace `X` and `Y` with your values):
+
+```routeros
+/container/envs
+add list=amneziawg key=LOCAL_NET value="192.168.X.0/24,192.168.Y.0/24,10.10.10.5"
+```
+
+Create only one `LOCAL_NET` entry in the envlist, or edit the existing entry. The script splits the list on commas, trims spaces and skips empty entries. `ip` checks each address or subnet when adding its route. If a route command fails, startup stops; previously added routes are not rolled back. An unset or blank `LOCAL_NET` adds no local routes.
+
 Environment variables are used by `start.sh`:
 
 ```bash
@@ -135,13 +146,13 @@ HANDSHAKE_TIMEOUT="${HANDSHAKE_TIMEOUT:-30}"
 PING_TARGET="${PING_TARGET:-1.1.1.1}"
 ```
 
-If `LOCAL_NET` is specified, the container automatically installs route:
+For each address or subnet in `LOCAL_NET`, the container installs a return route:
 
 ```bash
-ip route replace "${LOCAL_NET}" via "${REAL_GW}"
+ip -4 route replace "$local_route" via "$REAL_GW" dev "$REAL_IF"
 ```
 
-`REAL_GW` is the container default gateway captured before the VPN starts (172.18.20.5 in the topology below). This route directs return traffic toward the LAN through MikroTik rather than back into the tunnel. Server routing and forwarding must also be configured as described below.
+`REAL_GW` is the container default gateway captured before the VPN starts (172.18.20.5 in the topology below). These routes direct return traffic toward the local addresses and networks through MikroTik rather than back into the tunnel. Existing routes to the same destinations are replaced; choose entries that do not conflict with the transit network or VPN server endpoint. Server routing and forwarding must also be configured as described below.
 
 ---
 
@@ -318,7 +329,7 @@ LAN behind MikroTik: 192.168.X.0/24
 AWG client address:  10.8.1.17/32
 ```
 
-Set `LOCAL_NET` to the LAN subnet so the client container adds a return route through the MikroTik gateway. MikroTik selects which LAN traffic to send through the VPN.
+Set `LOCAL_NET` to the LAN addresses or subnets so the client container adds a return route for each through the MikroTik gateway. MikroTik selects which LAN traffic to send through the VPN.
 
 For this setup to work:
 
@@ -327,6 +338,8 @@ For this setup to work:
 * IPv4 forwarding must be enabled in both the client and server containers, and firewall rules must allow the traffic. The client `start.sh` does not enable forwarding itself.
 * MikroTik must route the selected LAN traffic to the client container and allow return traffic.
 * The server container must have a MASQUERADE rule for the LAN subnet to provide Internet access.
+
+For multiple entries, include every local address or subnet in the server peer's `AllowedIPs` and configure the corresponding server routes and firewall/NAT rules. Use `/32` for individual addresses. `LOCAL_NET` only controls client return routes; it does not configure the server or select MikroTik traffic.
 
 See [Server Side Configuration](#server-side-configuration) for server configuration and verification steps.
 

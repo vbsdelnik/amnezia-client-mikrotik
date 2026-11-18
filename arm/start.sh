@@ -50,8 +50,13 @@ ip route replace \
 
 
 if [ -n "$LOCAL_NET" ]; then
-    log "Adding local network route: $LOCAL_NET via $REAL_GW"
-    ip route replace "$LOCAL_NET" via $REAL_GW
+    printf '%s\n' "$LOCAL_NET" | tr ',' '\n' |
+    while IFS= read -r local_route; do
+        local_route=$(printf '%s' "$local_route" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [ -n "$local_route" ] || continue
+        log "Adding local network route: $local_route via $REAL_GW"
+        ip -4 route replace "$local_route" via "$REAL_GW" dev "$REAL_IF"
+    done
 fi
 
 log "Starting AmneziaWG..."
