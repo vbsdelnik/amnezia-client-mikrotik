@@ -48,13 +48,17 @@ Repository: [Docker Hub](https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm
 ```text
 .
 ├── README.md
-└── arm/
+├── arm/
+│   ├── Dockerfile
+│   ├── build.sh
+│   └── start.sh
+└── amd64/
     ├── Dockerfile
     ├── build.sh
     └── start.sh
 ```
 
-Only the ARMv7 build directory currently exists. ARM64 and AMD64 builds are planned.
+ARMv7 and AMD64 have separate build directories. ARM64 is planned.
 
 ---
 
@@ -64,7 +68,7 @@ Only the ARMv7 build directory currently exists. ARM64 and AMD64 builds are plan
 | ------------ | --------- |
 | ARMv7        | Supported |
 | ARM64        | Planned   |
-| AMD64        | Planned   |
+| AMD64        | Build verified |
 
 ---
 
@@ -410,24 +414,43 @@ The shown server startup script recreates the firewall rules directly; it does n
 
 # Building
 
-Go to architecture directory:
+Choose the build directory from the repository root:
 
 ```bash
+# ARMv7
 cd arm
 ```
 
-Build image:
+or:
+
+```bash
+# AMD64 (x86-64)
+cd amd64
+```
+
+Build the image from the selected directory:
 
 ```bash
 ./build.sh
 ```
 
-The script builds `linux/arm/v7` and loads `vbsdelnik/amneziawg-client-arm:latest` into the local Docker image store. It does not publish the image.
+Each script loads the image into the local Docker image store. It does not publish it.
 
-To publish a tested build to Docker Hub:
+| Directory | Platform | Local image |
+| --------- | -------- | ----------- |
+| `arm/` | `linux/arm/v7` | `vbsdelnik/amneziawg-client-arm:latest` |
+| `amd64/` | `linux/amd64` | `vbsdelnik/amneziawg-client-amd64:latest` |
+
+Docker Desktop supports building these platforms through emulation. On other Docker installations, building for a different CPU architecture requires a suitable builder or emulation.
+
+To publish a tested build to Docker Hub, choose its image:
 
 ```bash
+# ARMv7
 docker push vbsdelnik/amneziawg-client-arm:latest
+
+# AMD64
+docker push vbsdelnik/amneziawg-client-amd64:latest
 ```
 
 ---
@@ -454,7 +477,28 @@ Expected:
 linux/arm/v7
 ```
 
-Verify installed binaries (requires an ARMv7-compatible Docker environment or ARM emulation):
+For AMD64:
+
+```bash
+docker image inspect \
+  --format '{{.Os}}/{{.Architecture}}' \
+  vbsdelnik/amneziawg-client-amd64:latest
+```
+
+Expected: `linux/amd64`.
+
+For AMD64, the image build and binary startup have been verified. VPN connectivity and LAN forwarding still require testing with your actual configuration.
+
+```bash
+docker run --rm --platform linux/amd64 \
+  --entrypoint sh \
+  vbsdelnik/amneziawg-client-amd64:latest \
+  -c 'set -e; command -v awg; command -v awg-quick; command -v amneziawg-go; awg --version; amneziawg-go --version'
+```
+
+The pinned `amneziawg-go` tag `v3.1.20260828` reports the older embedded version string `0.0.20250522`. The source tag used for the build is specified by `AWG_GO_REF` in the Dockerfile.
+
+Verify installed binaries for ARMv7 (requires an ARMv7-compatible Docker environment or ARM emulation):
 
 ```bash
 docker run --rm \
@@ -471,7 +515,9 @@ docker run --rm \
 
 # Run Locally
 
-This example requires Linux Docker with `/dev/net/tun` and ARMv7 support, either native or through emulation. Run it from the directory containing your actual `awg.conf`; this file is not included in the repository.
+The examples below use the ARMv7 image. For AMD64, replace the image name with `vbsdelnik/amneziawg-client-amd64:latest`. Both images use the same configuration path, environment variables and startup logic.
+
+Local startup requires Linux Docker with `/dev/net/tun` and support for the selected image architecture, either native or through emulation. Run it from the directory containing your actual `awg.conf`; this file is not included in the repository.
 
 The local startup example has not been independently verified. The current `start.sh` deletes `/etc/resolv.conf`, which can fail when Docker mounts that file. The RouterOS startup behavior should not be assumed to work unchanged in standard Docker.
 
