@@ -134,6 +134,8 @@ add list=amneziawg key=HANDSHAKE_TIMEOUT value=60
 add list=amneziawg key=PING_TARGET value=8.8.8.8
 ```
 
+**Version compatibility:** Multiple addresses or subnets in `LOCAL_NET` are supported only in this project's 3.1 images. The 2.1 images support a single address or subnet only. This is a difference in the container startup script, not a limitation of the AmneziaWG protocol.
+
 `LOCAL_NET` accepts one IPv4 address or subnet, or a comma-separated list. Existing single-subnet values continue to work. Spaces around entries are allowed; an address without a prefix is treated as `/32`. All entries use the same original MikroTik gateway.
 
 For multiple entries, use this value instead of the single-subnet `LOCAL_NET` example above (replace `X` and `Y` with your values):
@@ -465,53 +467,67 @@ List images:
 docker image ls
 ```
 
-Verify the image architecture without running the container:
+Verify the image architecture without running the container.
+
+ARMv7:
 
 ```bash
 docker image inspect \
-  --format '{{.Os}}/{{.Architecture}}/{{.Variant}}' \
+  --format '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}' \
   vbsdelnik/amneziawg-client-arm:latest
 ```
 
-Expected:
+Expected: `linux/arm/v7`.
 
-```text
-linux/arm/v7
-```
-
-For AMD64:
+AMD64:
 
 ```bash
 docker image inspect \
-  --format '{{.Os}}/{{.Architecture}}' \
+  --format '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}' \
   vbsdelnik/amneziawg-client-amd64:latest
 ```
 
-Expected: `linux/amd64`.
+Expected: `linux/amd64`. The same format includes the variant when present; ARMv7 uses `v7`, while AMD64 has no variant.
 
-For AMD64, the image build and binary startup have been verified. VPN connectivity and LAN forwarding still require testing with your actual configuration.
+Verify installed binaries using a Docker environment that supports the selected architecture, either natively or through emulation.
 
-```bash
-docker run --rm --platform linux/amd64 \
-  --entrypoint sh \
-  vbsdelnik/amneziawg-client-amd64:latest \
-  -c 'set -e; command -v awg; command -v awg-quick; command -v amneziawg-go; awg --version; amneziawg-go --version'
-```
-
-The pinned `amneziawg-go` tag `v3.1.20260828` reports the older embedded version string `0.0.20250522`. The source tag used for the build is specified by `AWG_GO_REF` in the Dockerfile.
-
-Verify installed binaries for ARMv7 (requires an ARMv7-compatible Docker environment or ARM emulation):
+ARMv7:
 
 ```bash
 docker run --rm \
+  --platform linux/arm/v7 \
   --entrypoint sh \
   vbsdelnik/amneziawg-client-arm:latest \
   -c '
-    which awg
-    which awg-quick
-    which amneziawg-go
+    set -e
+    command -v awg
+    command -v awg-quick
+    command -v amneziawg-go
+    awg --version
+    amneziawg-go --version
   '
 ```
+
+AMD64:
+
+```bash
+docker run --rm \
+  --platform linux/amd64 \
+  --entrypoint sh \
+  vbsdelnik/amneziawg-client-amd64:latest \
+  -c '
+    set -e
+    command -v awg
+    command -v awg-quick
+    command -v amneziawg-go
+    awg --version
+    amneziawg-go --version
+  '
+```
+
+`amneziawg-go --version` displays `0.0.20250522` because the version string in the upstream source code is outdated. This image is built from tag `v3.1.20260828`, as specified by `AWG_GO_REF` in the Dockerfile.
+
+For AMD64, the image build and binary startup have been verified. VPN connectivity and LAN forwarding still require testing with your actual configuration.
 
 ---
 
