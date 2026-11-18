@@ -33,17 +33,13 @@ The project provides a lightweight container image containing:
 
 # Docker Hub
 
-Official image:
+Project image:
 
 ```bash
 docker pull vbsdelnik/amneziawg-client-arm:latest
 ```
 
-Repository:
-
-```text
-https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm
-```
+Repository: [Docker Hub](https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm).
 
 ---
 
@@ -121,8 +117,9 @@ The container supports optional environment variables supplied through RouterOS 
 | LOCAL_NET         | No       | —       | LAN network located behind MikroTik           |
 | HANDSHAKE_TIMEOUT | No       | 30      | Time in seconds to wait for initial handshake |
 | PING_TARGET       | No       | 1.1.1.1 | IP address used for connectivity verification |
+| DEBUG             | No       | 0       | Set to 1 to print startup diagnostics         |
 
-Example:
+Example (create the envlist once and replace `X` with your LAN subnet value):
 
 ```routeros
 /container/envs
@@ -183,6 +180,26 @@ Example deployment:
 
 ---
 
+# RouterOS Prerequisites
+
+Before deployment:
+
+* Install the Container package for your RouterOS version and architecture.
+* Enable container support in device mode, following the confirmation procedure for your device.
+* Ensure the container can reach the VPN server through MikroTik and that the required TUN access is available on your RouterOS version.
+* Ensure there is enough storage for the image and container files.
+
+Configure Docker Hub as the image registry if it is not already configured:
+
+```routeros
+/container/config
+set registry-url=https://registry-1.docker.io
+```
+
+See the [MikroTik Container documentation](https://help.mikrotik.com/docs/spaces/ROS/pages/84901929/Container) for the prerequisites and options supported by your RouterOS version.
+
+---
+
 # Creating veth Interface
 
 Create veth interface on RouterOS:
@@ -196,6 +213,15 @@ add \
 ```
 
 The veth `address` is assigned to the container. The `gateway` must be an address configured on MikroTik on the connected container network; creating the veth alone does not assign that gateway address to RouterOS.
+
+For this example, assign the gateway address directly to `veth-awg` if it is not already configured:
+
+```routeros
+/ip/address
+add address=172.18.20.5/30 interface=veth-awg
+```
+
+This example uses a direct veth connection. If the veth is attached to a bridge, configure the gateway on the appropriate bridge instead. Do not add a duplicate address.
 
 Addresses:
 
@@ -223,14 +249,7 @@ add \
 
 # Environment List
 
-Create envlist:
-
-```routeros
-/container/envs
-add list=amneziawg key=LOCAL_NET value=192.168.X.0/24
-add list=amneziawg key=HANDSHAKE_TIMEOUT value=60
-add list=amneziawg key=PING_TARGET value=8.8.8.8
-```
+Create the `amneziawg` envlist using the example in [Environment Variables](#environment-variables) if you have not already done so. The container uses this list through `envlist=amneziawg`.
 
 ---
 
@@ -245,33 +264,46 @@ Create container:
     root-dir=amneziawg \
     mountlists=amnezia-config \
     envlist=amneziawg \
+    logging=yes \
     start-on-boot=yes
 ```
 
-Start container:
+Wait for image download/extraction to finish, then check `/container/print` and start the correct container. The example uses index `0`; replace it with your container's index:
 
 ```routeros
+/container/print
 /container/start 0
 ```
 
-View logs:
+View container logs (`logging=yes` must be enabled). This shows messages for all containers:
 
 ```routeros
-/log/print where message~"amneziawg"
+/log/print where topics~"container"
 ```
 
 ---
 
 # MikroTik Routing
 
-Route LAN traffic through the container:
+Create the RouterOS routing table if it does not already exist:
+
+```routeros
+/routing/table
+add name=amnezia fib
+```
+
+This table belongs to MikroTik, outside the container. It is separate from the client's `Table = off` setting.
+
+Add the route through the container to this table:
 
 ```routeros
 /ip/route
 add dst-address=0.0.0.0/0 gateway=172.18.20.6 routing-table=amnezia
 ```
 
-Create routing rules according to your deployment requirements.
+Select the traffic that should use this table with routing rules or mangle marks according to your deployment requirements. Adding the route alone does not select any LAN traffic. Keep the VPN server endpoint reachable through the normal Internet path to avoid sending the tunnel's own traffic back into the tunnel.
+
+See [MikroTik Policy Routing](https://help.mikrotik.com/docs/spaces/ROS/pages/59965508/Policy+Routing) for routing table and traffic selection examples.
 
 ---
 
@@ -377,6 +409,14 @@ Build image:
 ./build.sh
 ```
 
+The script builds `linux/arm/v7` and loads `vbsdelnik/amneziawg-client-arm:latest` into the local Docker image store. It does not publish the image.
+
+To publish a tested build to Docker Hub:
+
+```bash
+docker push vbsdelnik/amneziawg-client-arm:latest
+```
+
 ---
 
 # Verify Build
@@ -387,22 +427,21 @@ List images:
 docker image ls
 ```
 
-Verify architecture:
+Verify the image architecture without running the container:
 
 ```bash
-docker run --rm \
-  --entrypoint sh \
-  vbsdelnik/amneziawg-client-arm:latest \
-  -c 'uname -m'
+docker image inspect \
+  --format '{{.Os}}/{{.Architecture}}/{{.Variant}}' \
+  vbsdelnik/amneziawg-client-arm:latest
 ```
 
 Expected:
 
 ```text
-armv7l
+linux/arm/v7
 ```
 
-Verify installed binaries:
+Verify installed binaries (requires an ARMv7-compatible Docker environment or ARM emulation):
 
 ```bash
 docker run --rm \
@@ -419,11 +458,15 @@ docker run --rm \
 
 # Run Locally
 
+This example requires Linux Docker with `/dev/net/tun` and ARMv7 support, either native or through emulation. Run it from the directory containing your actual `awg.conf`; this file is not included in the repository.
+
+The local startup example has not been independently verified. The current `start.sh` deletes `/etc/resolv.conf`, which can fail when Docker mounts that file. The RouterOS startup behavior should not be assumed to work unchanged in standard Docker.
+
 ```bash
 docker run --rm -it \
   --cap-add NET_ADMIN \
   --device /dev/net/tun \
-  -v $(pwd)/awg.conf:/config/awg.conf:ro \
+  -v "$(pwd)/awg.conf:/config/awg.conf:ro" \
   vbsdelnik/amneziawg-client-arm:latest
 ```
 
@@ -444,6 +487,13 @@ Because of this, routed networking is preferred over NAT.
 ---
 
 # Troubleshooting
+
+Run the following Linux commands inside the client container, not on the VPS or in the RouterOS terminal. On RouterOS, identify the container and open its shell (replace index `0` as needed):
+
+```routeros
+/container/print
+/container/shell 0
+```
 
 Check handshake:
 
@@ -469,10 +519,11 @@ Check connectivity:
 ping 1.1.1.1
 ```
 
-Container logs:
+For logs, return to the RouterOS terminal. Enable logging for the correct container if needed (replace index `0`):
 
 ```routeros
-/log/print where message~"amneziawg"
+/container/set 0 logging=yes
+/log/print where topics~"container"
 ```
 
 ---
@@ -489,17 +540,24 @@ After startup, the script waits with `tail -f /dev/null`; it does not periodical
 
 # Upgrading
 
-Pull latest image:
+Updating an image on a Docker workstation does not update the container installed on MikroTik. Restarting the RouterOS container alone also does not download a new image.
+
+To upgrade on RouterOS:
+
+1. Keep a copy of `/awg.conf` and record the container's interface, mount list, envlist and root directory.
+2. Stop the client container. VPN traffic through it will be interrupted.
+3. Download and apply the new image using the container update or reimport procedure supported by your RouterOS version. If recreating the container, preserve the external configuration file and reuse the required mount list, envlist and interface settings.
+4. Start the container and verify its logs, handshake and connectivity from a LAN host.
+
+For version-specific update commands, see the [MikroTik Container documentation](https://help.mikrotik.com/docs/spaces/ROS/pages/84901929/Container).
+
+To download the latest image on a Docker workstation:
 
 ```bash
-docker pull vbsdelnik/amneziawg-client-arm:latest
+docker pull --platform linux/arm/v7 vbsdelnik/amneziawg-client-arm:latest
 ```
 
-Push newly built image:
-
-```bash
-docker push vbsdelnik/amneziawg-client-arm:latest
-```
+This downloads the image only; an existing Docker container must be recreated to use it. Image publication is described in [Building](#building).
 
 ---
 
