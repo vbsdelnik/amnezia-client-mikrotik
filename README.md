@@ -1,6 +1,8 @@
-# AmneziaWG Docker Client for MikroTik RouterOS
+# AmneziaWG Docker Client
 
-Docker container with AmneziaWG client intended for deployment on MikroTik RouterOS Container subsystem.
+Docker container with an AmneziaWG client for Linux Docker environments and MikroTik RouterOS.
+
+The networking examples in this README use MikroTik RouterOS. For other environments, apply equivalent network settings appropriate to your setup.
 
 The project provides a lightweight container image containing:
 
