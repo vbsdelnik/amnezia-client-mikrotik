@@ -1,0 +1,107 @@
+#!/bin/bash
+set -euo pipefail
+
+ACTION="${1:-status}"
+TAG="amnezia-pbr"
+
+case "$ACTION" in
+    apply|remove|status) ;;
+    *) echo "Usage: $0 {apply|remove|status}" >&2; exit 1 ;;
+esac
+[[ $EUID -eq 0 ]] || { echo "Run as root." >&2; exit 1; }
+source /usr/local/lib/amnezia-client/common.sh
+load_settings
+
+rule_matches() {
+    local priority=$1 network=$2 line
+    line=$(ip -N -4 rule show priority "$priority")
+    # read collapses the display whitespace, so tabs/spaces do not matter.
+    local number from source iif interface lookup table extra
+    read -r number from source iif interface lookup table extra <<< "$line"
+    [[ "$line" != *$'\n'* && "$number" == "$priority:" && "$from" == from &&
+       "$source" == "$network" && "$iif" == iif && "$interface" == "$LOCAL_IF" &&
+       "$lookup" == lookup && "$table" == "$VPN_TABLE" && -z "$extra" ]]
+}
+
+firewall_rules() {
+    local action=$1 network
+    for network in "${LOCAL_NETWORKS[@]}"; do
+        local outbound=(-i "$LOCAL_IF" -o "$AWG_BRIDGE" -s "$network" -m comment --comment "$TAG" -j ACCEPT)
+        local inbound=(-i "$AWG_BRIDGE" -o "$LOCAL_IF" -d "$network" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$TAG" -j ACCEPT)
+        if [[ "$action" == add ]]; then
+            iptables -w 5 -C DOCKER-USER "${outbound[@]}" 2>/dev/null || iptables -w 5 -I DOCKER-USER 1 "${outbound[@]}"
+            iptables -w 5 -C DOCKER-USER "${inbound[@]}" 2>/dev/null || iptables -w 5 -I DOCKER-USER 1 "${inbound[@]}"
+        else
+            while iptables -w 5 -C DOCKER-USER "${outbound[@]}" 2>/dev/null; do iptables -w 5 -D DOCKER-USER "${outbound[@]}"; done
+            while iptables -w 5 -C DOCKER-USER "${inbound[@]}" 2>/dev/null; do iptables -w 5 -D DOCKER-USER "${inbound[@]}"; done
+        fi
+    done
+}
+
+case "$ACTION" in
+    apply)
+        deadline=$((SECONDS + WAIT_SECONDS))
+        until ip link show dev "$LOCAL_IF" >/dev/null 2>&1 &&
+              ip link show dev "$AWG_BRIDGE" >/dev/null 2>&1 &&
+              iptables -w 5 -nL DOCKER-USER >/dev/null 2>&1; do
+            [[ $SECONDS -lt $deadline ]] || die "LAN interface, bridge or DOCKER-USER not ready. Check Docker's iptables backend."
+            sleep 1
+        done
+        [[ $(cat /proc/sys/net/ipv4/ip_forward) == 1 ]] || die "Enable IPv4 forwarding with the supplied sysctl file."
+
+        # Reject occupied priorities or unexpected routes before applying changes.
+        priority=$RULE_PRIORITY
+        for network in "${LOCAL_NETWORKS[@]}"; do
+            existing=$(ip -N -4 rule show priority "$priority")
+            [[ -z "$existing" ]] || rule_matches "$priority" "$network" || die "Priority $priority is occupied by a different rule."
+            priority=$((priority + 1))
+        done
+        while IFS= read -r route; do
+            [[ -z "$route" ]] && continue
+            read -r -a route_fields <<< "$route"
+            route="${route_fields[*]}"
+            route=${route% linkdown}
+            case "$route" in
+                "$AWG_NETWORK dev $AWG_BRIDGE proto static scope link"|"default via $AWG_IP dev $AWG_BRIDGE proto static") ;;
+                *) die "Table $VPN_TABLE contains an unexpected route: $route" ;;
+            esac
+        done < <(ip -4 route show table "$VPN_TABLE" 2>/dev/null || true)
+
+        firewall_rules add
+        ip -4 route replace "$AWG_NETWORK" dev "$AWG_BRIDGE" scope link proto static table "$VPN_TABLE"
+        ip -4 route replace default via "$AWG_IP" dev "$AWG_BRIDGE" proto static table "$VPN_TABLE"
+        priority=$RULE_PRIORITY
+        for network in "${LOCAL_NETWORKS[@]}"; do
+            rule_matches "$priority" "$network" || ip -4 rule add priority "$priority" from "$network" iif "$LOCAL_IF" lookup "$VPN_TABLE"
+            priority=$((priority + 1))
+        done
+        echo "Applied LAN policy routing in table $VPN_TABLE; main is unchanged."
+        ;;
+    remove)
+        priority=$RULE_PRIORITY
+        for network in "${LOCAL_NETWORKS[@]}"; do
+            if rule_matches "$priority" "$network"; then
+                ip -4 rule del priority "$priority" from "$network" iif "$LOCAL_IF" lookup "$VPN_TABLE"
+            fi
+            priority=$((priority + 1))
+        done
+        firewall_rules remove
+        # Delete only the two exact routes reserved for this helper, never flush a table.
+        ip -4 route del default via "$AWG_IP" dev "$AWG_BRIDGE" proto static table "$VPN_TABLE" 2>/dev/null || true
+        ip -4 route del "$AWG_NETWORK" dev "$AWG_BRIDGE" scope link proto static table "$VPN_TABLE" 2>/dev/null || true
+        echo "Removed the configured LAN policy rules, tagged firewall rules and reserved routes."
+        ;;
+    status)
+        echo "IPv4 forwarding: $(cat /proc/sys/net/ipv4/ip_forward)"
+        echo "Policy rules:"
+        priority=$RULE_PRIORITY
+        for network in "${LOCAL_NETWORKS[@]}"; do
+            ip -N -4 rule show priority "$priority"
+            priority=$((priority + 1))
+        done
+        echo "Table $VPN_TABLE:"
+        ip -4 route show table "$VPN_TABLE" 2>/dev/null || true
+        echo "Tagged DOCKER-USER rules:"
+        iptables -w 5 -S DOCKER-USER | grep -F -- "$TAG" || true
+        ;;
+esac

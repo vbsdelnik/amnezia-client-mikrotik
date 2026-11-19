@@ -1,0 +1,2 @@
+# Loaded automatically by systemd-sysctl at boot on Debian 13.
+net.ipv4.ip_forward=1

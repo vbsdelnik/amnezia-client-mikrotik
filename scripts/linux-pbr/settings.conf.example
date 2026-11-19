@@ -1,0 +1,28 @@
+# Fill LOCAL_IF and LOCAL_NET, then run install.sh again.
+# This is a root-owned Bash configuration; keep it writable only by root.
+
+# Container and client profile:
+CONTAINER_NAME="amneziawg-client"
+IMAGE="vbsdelnik/amneziawg-client-amd64:latest"
+AWG_CONFIG="/opt/amnezia-client/awg.conf"
+
+# Docker network and container address:
+DOCKER_NETWORK="awg-client"
+AWG_BRIDGE="br-awg"
+AWG_NETWORK="172.18.20.4/30"
+AWG_GATEWAY="172.18.20.5"
+AWG_IP="172.18.20.6"
+
+# Incoming LAN interface and comma-separated network CIDRs (or /32 hosts):
+LOCAL_IF="CHANGE_ME"
+LOCAL_NET="CHANGE_ME"
+
+# Reserve this table and one priority per LOCAL_NET entry for PBR only:
+VPN_TABLE=200
+RULE_PRIORITY=10000
+WAIT_SECONDS=60
+
+# Container startup checks:
+HANDSHAKE_TIMEOUT=60
+PING_TARGET="1.1.1.1"
+DEBUG=0

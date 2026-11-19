@@ -1,0 +1,20 @@
+[Unit]
+Description=Amnezia client policy routing for forwarded LAN traffic
+Wants=network-online.target
+Requires=docker.service
+After=network-online.target docker.service
+PartOf=docker.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/amnezia-pbr apply
+ExecStop=/usr/local/sbin/amnezia-pbr remove
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=90s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

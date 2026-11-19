@@ -54,10 +54,12 @@ Repository: [Docker Hub](https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm
 │   ├── Dockerfile
 │   ├── build.sh
 │   └── start.sh
-└── amd64/
-    ├── Dockerfile
-    ├── build.sh
-    └── start.sh
+├── amd64/
+│   ├── Dockerfile
+│   ├── build.sh
+│   └── start.sh
+└── scripts/
+    └── linux-pbr/
 ```
 
 ARMv7 and AMD64 have separate build directories. ARM64 is planned.
@@ -413,6 +415,14 @@ Replace `192.168.X.0/24` with your LAN subnet before applying the examples. Keep
    The selected peer must include the LAN in AllowedIPs, and the route to a LAN host must use `awg0`. The server starts the interface with `awg-quick`, which can install the route from AllowedIPs depending on its routing settings; verify the result before adding a route manually. Test Internet access from an actual LAN host routed through the client.
 
 The shown server startup script recreates the firewall rules directly; it does not load an `iptables-save` file. A separate `iptables-save` is not required for this method. These changes remain after restarting the container. Persistence after container recreation depends on the deployment mounts; keep copies before recreating or upgrading the server container.
+
+---
+
+# Linux Policy Routing
+
+For a Debian 13 gateway, [scripts/linux-pbr](scripts/linux-pbr/README.md) provides an installer, shared `settings.conf`, a setup script (`run.sh`) and persistent host policy routing. Fill in the settings, complete installation, then run the setup script separately to start the container and apply forwarding and PBR. Selected transit traffic uses a separate table through the client container; the host's main routing table is preserved.
+
+Follow the installation instructions in that directory. These files are installed on the Linux host, not inside the VPN image.
 
 ---
 
