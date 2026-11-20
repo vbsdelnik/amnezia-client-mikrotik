@@ -31,7 +31,7 @@ fi
 
 chmod 600 "$CONFIG_FILE" 2>/dev/null || true
 
-rm -f /etc/resolv.conf
+rm -f /etc/resolv.conf 2>/dev/null || : > /etc/resolv.conf
 resolvconf -u
 
 VPN_ENDPOINT=$(awk -F' = ' \
