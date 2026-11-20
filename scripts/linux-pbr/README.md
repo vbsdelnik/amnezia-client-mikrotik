@@ -15,10 +15,9 @@ All LAN networks in `LOCAL_NET` must arrive through `LOCAL_IF`.
 
 ## Install
 
-Open a root Bash shell and run:
+Run this command as **root** in a Bash shell:
 
 ```bash
-sudo -i
 bash <(curl -fsSL https://raw.githubusercontent.com/vbsdelnik/amnezia-client-mikrotik/main/scripts/linux-pbr/install.sh)
 ```
 
@@ -165,10 +164,9 @@ This kit is not a VPN kill switch. If the VPN table has no usable route, traffic
 
 ## Uninstall
 
-Open a root Bash shell and run:
+Run this command as **root** in a Bash shell:
 
 ```bash
-sudo -i
 bash <(curl -fsSL https://raw.githubusercontent.com/vbsdelnik/amnezia-client-mikrotik/main/scripts/linux-pbr/uninstall.sh)
 ```
 
