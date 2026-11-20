@@ -1,4 +1,4 @@
-# Fill LOCAL_IF and LOCAL_NET, then run install.sh again.
+# Fill LOCAL_IF and LOCAL_NET, then start /opt/amnezia-client/run.sh.
 # This is a root-owned Bash configuration; keep it writable only by root.
 
 # Container and client profile:

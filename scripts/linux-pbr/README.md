@@ -22,7 +22,11 @@ sudo -i
 bash <(curl -fsSL https://raw.githubusercontent.com/vbsdelnik/amnezia-client-mikrotik/main/scripts/linux-pbr/install.sh)
 ```
 
-When launched through `bash <(curl ...)`, the installer saves an executable `install.sh` in your current directory. On the first run, it creates `/etc/amnezia-client/settings.conf` and asks you to replace the `CHANGE_ME` values. It stops with a nonzero exit code until settings are complete. The remaining components are not installed yet.
+The installer installs all files in one pass and creates `/etc/amnezia-client/settings.conf` if it does not exist. When launched through `bash <(curl ...)`, it also saves an executable `install.sh` in the current directory. Existing settings are kept. You do not need to rerun the installer after filling them in.
+
+## Configure
+
+After installation, edit settings:
 
 ```bash
 vi /etc/amnezia-client/settings.conf
@@ -58,17 +62,13 @@ ip -4 rule show
 ip -4 route show table all
 ```
 
-After editing settings, run the saved installer from the same directory:
-
-```bash
-./install.sh
-```
-
-It downloads the required files again as needed. If a required setting is empty or contains `CHANGE_ME`, installation stops. Otherwise it installs the files and prints the next command:
+After completing settings and placing your client profile at `AWG_CONFIG`, run:
 
 ```bash
 sudo /opt/amnezia-client/run.sh
 ```
+
+`run.sh` checks settings and refuses to continue if required values are empty or contain `CHANGE_ME`.
 
 **The installer does not run that command.** It does not start the container or PBR, enable services, or apply forwarding to the running system. Existing settings and sysctl files are kept. Temporary downloads are deleted automatically.
 
@@ -163,16 +163,44 @@ This removes the configured PBR rules, tagged firewall rules and two reserved ro
 
 This kit is not a VPN kill switch. If the VPN table has no usable route, traffic may fall back to `main`; blocking outside-VPN traffic needs separate rules.
 
+## Uninstall
+
+Open a root Bash shell and run:
+
+```bash
+sudo -i
+bash <(curl -fsSL https://raw.githubusercontent.com/vbsdelnik/amnezia-client-mikrotik/main/scripts/linux-pbr/uninstall.sh)
+```
+
+Or use the installed copy:
+
+```bash
+sudo /opt/amnezia-client/uninstall.sh
+```
+
+The uninstaller lists the files it will delete and asks `Proceed? [Y/n]`. Enter `n` to cancel, or `Y`/Enter to continue. It requires a response; an unreadable/closed input cancels removal.
+
+After confirmation, it stops and disables PBR, removes the configured PBR routes and tagged firewall rules, then deletes the installed scripts, service, settings and sysctl file. The legacy `pbr.conf` is removed if present. Empty project directories are removed; directories containing your profile or other files remain.
+
+**Your `awg.conf` is preserved**, including a custom profile path from settings. Docker containers, networks and images are not removed. Forwarding is not switched off in the running system. Stopping PBR interrupts VPN routing for the selected LAN traffic.
+
+The installer records the path and checksum of its saved local `install.sh`. The uninstaller deletes that copy only if it is unchanged. Repository source files and unrelated files are left alone. Older installations without this record may leave a saved installer to remove manually.
+
+Uninstalling before filling in settings is supported. If PBR is still active but its settings are invalid, removal stops so the rules are not left behind without their helper files. Fix settings and rerun the uninstaller.
+
 ## Installed files
 
 | File | Destination |
 | --- | --- |
 | `settings.conf.example` | `/etc/amnezia-client/settings.conf` |
 | `run.sh` | `/opt/amnezia-client/run.sh` |
+| `uninstall.sh` | `/opt/amnezia-client/uninstall.sh` |
 | `common.sh` | `/usr/local/lib/amnezia-client/common.sh` |
 | `amnezia-pbr` | `/usr/local/sbin/amnezia-pbr` |
 | `amnezia-pbr.service` | `/etc/systemd/system/amnezia-pbr.service` |
 | `90-awg-forwarding.conf.example` | `/etc/sysctl.d/90-awg-forwarding.conf` |
+
+The installer also writes `/etc/amnezia-client/install-state.conf` to track its saved copy.
 
 Keep settings root-owned and writable only by root; they are loaded as Bash code. No VPN keys belong in settings: they stay in `awg.conf`.
 

@@ -420,7 +420,7 @@ The shown server startup script recreates the firewall rules directly; it does n
 
 # Linux Policy Routing
 
-For a Debian 13 gateway, [scripts/linux-pbr](scripts/linux-pbr/README.md) provides an installer, shared `settings.conf`, a setup script (`run.sh`) and persistent host policy routing. Fill in the settings, complete installation, then run the setup script separately to start the container and apply forwarding and PBR. Selected transit traffic uses a separate table through the client container; the host's main routing table is preserved.
+For a Debian 13 gateway, [scripts/linux-pbr](scripts/linux-pbr/README.md) provides an installer/uninstaller, shared `settings.conf`, a setup script (`run.sh`) and persistent host policy routing. Install the files in one pass, fill in settings, then run the setup script separately to start the container and apply forwarding and PBR. Selected transit traffic uses a separate table through the client container; the host's main routing table is preserved.
 
 Follow the installation instructions in that directory. These files are installed on the Linux host, not inside the VPN image.
 

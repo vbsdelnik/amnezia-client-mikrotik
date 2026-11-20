@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shared settings checks for the installer, container launcher and PBR helper.
+# Shared settings checks for the container launcher and PBR helper.
 
 SETTINGS_FILE="${AMNEZIA_SETTINGS:-/etc/amnezia-client/settings.conf}"
 

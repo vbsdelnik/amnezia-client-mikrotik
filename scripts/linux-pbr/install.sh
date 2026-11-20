@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+umask 077
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -12,30 +13,21 @@ if systemctl is-active --quiet amnezia-pbr.service; then
     die "Stop amnezia-pbr.service with its current settings before upgrading."
 fi
 
-FILES=(install.sh settings.conf.example common.sh run.sh amnezia-pbr amnezia-pbr.service 90-awg-forwarding.conf.example)
+FILES=(install.sh uninstall.sh settings.conf.example common.sh run.sh amnezia-pbr amnezia-pbr.service 90-awg-forwarding.conf.example)
 SCRIPT_DIR=""
 SOURCE_FILE="${BASH_SOURCE[0]:-}"
 DOWNLOAD_DIR=""
 SAVE_INSTALLER=0
-RERUN_COMMAND="./install.sh"
-SETTINGS_PENDING=0
 
 cleanup() {
-    local status=$?
     if [[ -n "$DOWNLOAD_DIR" ]]; then
         rm -rf -- "$DOWNLOAD_DIR"
-    fi
-    if [[ $status -ne 0 && $SETTINGS_PENDING -eq 1 ]]; then
-        printf '\nAfter completing %s, run:\n  %s\n' "$SETTINGS_FILE" "$RERUN_COMMAND" >&2
     fi
 }
 trap cleanup EXIT
 
 if [[ -n "$SOURCE_FILE" && -f "$SOURCE_FILE" ]]; then
     SCRIPT_DIR="$(cd -- "$(dirname -- "$SOURCE_FILE")" && pwd)"
-    if [[ "$SCRIPT_DIR" != "$(pwd -P)" ]]; then
-        RERUN_COMMAND="$SCRIPT_DIR/$(basename -- "$SOURCE_FILE")"
-    fi
 else
     SAVE_INSTALLER=1
 fi
@@ -57,22 +49,30 @@ fi
 if [[ $SAVE_INSTALLER -eq 1 ]]; then
     if [[ -e ./install.sh || -L ./install.sh ]]; then
         [[ -f ./install.sh && ! -L ./install.sh ]] || die "Cannot save ./install.sh: the path is not a regular file."
-        cmp -s "$SCRIPT_DIR/install.sh" ./install.sh || die "A different ./install.sh already exists. Rename it or run this command in an empty directory."
+        cmp -s "$SCRIPT_DIR/install.sh" ./install.sh ||
+            grep -Fq 'https://raw.githubusercontent.com/vbsdelnik/amnezia-client-mikrotik/main/scripts/linux-pbr' ./install.sh ||
+            die "A different ./install.sh already exists. Rename it or run this command in an empty directory."
     fi
     install -o 0 -g 0 -m 0755 "$SCRIPT_DIR/install.sh" ./install.sh
     printf 'Saved installer: %s/install.sh\n' "$(pwd -P)"
 fi
 
-source "$SCRIPT_DIR/common.sh"
-if [[ ! -e "$SETTINGS_FILE" && ! -L "$SETTINGS_FILE" ]]; then
-    install -d -m 0700 "$(dirname -- "$SETTINGS_FILE")"
-    install -o 0 -g 0 -m 0600 "$SCRIPT_DIR/settings.conf.example" "$SETTINGS_FILE"
-    printf 'Created %s.\nReplace CHANGE_ME values and review the defaults:\n  vi %s\n\nThen run:\n  %s\n' "$SETTINGS_FILE" "$SETTINGS_FILE" "$RERUN_COMMAND"
-    exit 1
+SETTINGS_FILE="${AMNEZIA_SETTINGS:-/etc/amnezia-client/settings.conf}"
+STATE_FILE=/etc/amnezia-client/install-state.conf
+INSTALLER_COPY=""
+INSTALLER_SHA256=""
+if [[ -f "$STATE_FILE" ]]; then
+    source "$STATE_FILE"
 fi
-SETTINGS_PENDING=1
-load_settings
-SETTINGS_PENDING=0
+if [[ $SAVE_INSTALLER -eq 1 ]]; then
+    INSTALLER_COPY="$(pwd -P)/install.sh"
+    read -r INSTALLER_SHA256 _ < <(sha256sum -- "$INSTALLER_COPY")
+fi
+
+install -d -m 0700 /etc/amnezia-client "$(dirname -- "$SETTINGS_FILE")"
+if [[ ! -e "$SETTINGS_FILE" && ! -L "$SETTINGS_FILE" ]]; then
+    install -o 0 -g 0 -m 0600 "$SCRIPT_DIR/settings.conf.example" "$SETTINGS_FILE"
+fi
 
 # Installation only: do not start containers/services or apply sysctl settings.
 install -d -m 0755 /usr/local/sbin /usr/local/lib/amnezia-client /etc/systemd/system /etc/sysctl.d
@@ -82,9 +82,12 @@ if [[ ! -e /etc/sysctl.d/90-awg-forwarding.conf && ! -L /etc/sysctl.d/90-awg-for
 fi
 install -o 0 -g 0 -m 0644 "$SCRIPT_DIR/common.sh" /usr/local/lib/amnezia-client/common.sh
 install -o 0 -g 0 -m 0755 "$SCRIPT_DIR/run.sh" /opt/amnezia-client/run.sh
+install -o 0 -g 0 -m 0755 "$SCRIPT_DIR/uninstall.sh" /opt/amnezia-client/uninstall.sh
 install -o 0 -g 0 -m 0755 "$SCRIPT_DIR/amnezia-pbr" /usr/local/sbin/amnezia-pbr
 install -o 0 -g 0 -m 0644 "$SCRIPT_DIR/amnezia-pbr.service" /etc/systemd/system/amnezia-pbr.service
+printf 'INSTALLER_COPY=%q\nINSTALLER_SHA256=%q\nSETTINGS_PATH=%q\n' "$INSTALLER_COPY" "$INSTALLER_SHA256" "$SETTINGS_FILE" > "$STATE_FILE"
+chmod 0600 "$STATE_FILE"
 systemctl daemon-reload
 
-printf '\nInstallation completed successfully.\nSettings: %s\n\nPlace your client profile at:\n  %s\n\nWhen ready, run the setup:\n  sudo /opt/amnezia-client/run.sh\n' "$SETTINGS_FILE" "$AWG_CONFIG"
-echo 'The installer has not started the container or PBR, or applied forwarding.'
+printf '\nInstallation completed successfully.\n\nFill in settings (replace CHANGE_ME and review the defaults):\n  vi %s\n\nPlace your client profile at AWG_CONFIG from settings\n(default: /opt/amnezia-client/awg.conf), then run:\n  sudo /opt/amnezia-client/run.sh\n' "$SETTINGS_FILE"
+echo 'No second installer run is needed. The installer has not started the container or PBR, or applied forwarding.'
