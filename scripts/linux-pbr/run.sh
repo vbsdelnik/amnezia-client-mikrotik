@@ -2,7 +2,8 @@
 set -euo pipefail
 
 [[ $EUID -eq 0 ]] || { echo "Run as root: sudo $0" >&2; exit 1; }
-source /usr/local/lib/amnezia-client/common.sh
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
 load_settings
 
 [[ -f "$AWG_CONFIG" ]] || die "Client configuration not found: $AWG_CONFIG"
@@ -47,6 +48,6 @@ echo "Applying host forwarding and policy routing..."
 sysctl -p /etc/sysctl.d/90-awg-forwarding.conf
 systemctl enable amnezia-pbr.service
 systemctl restart amnezia-pbr.service
-amnezia-pbr status
+"$APP_DIR/amnezia-pbr" status
 
 printf '\nSetup completed: container started, host forwarding and PBR applied.\nCheck the VPN connection and LAN traffic:\n  docker logs -f %s\n' "$CONTAINER_NAME"

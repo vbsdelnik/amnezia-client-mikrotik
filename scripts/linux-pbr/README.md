@@ -2,7 +2,9 @@
 
 Use this kit on a Debian 13 gateway to run the AWG client and send selected LAN traffic through it. Debian itself keeps its normal gateway.
 
-All settings are in `/etc/amnezia-client/settings.conf`. `run.sh` starts the container, applies forwarding and enables host policy routing through `amnezia-pbr`. Neither script needs editing when you change settings.
+The scripts, settings and client profile live together in `/opt/amnezia-client/`. Only the systemd unit and sysctl file are installed under `/etc/`.
+
+All settings are in `/opt/amnezia-client/settings.conf`. `run.sh` starts the container, applies forwarding and enables host policy routing through `amnezia-pbr`. Neither script needs editing when you change settings.
 
 ## Before installing
 
@@ -21,14 +23,14 @@ Run this command as **root** in a Bash shell:
 bash <(curl -fsSL https://raw.githubusercontent.com/vbsdelnik/amnezia-client-mikrotik/main/scripts/linux-pbr/install.sh)
 ```
 
-The installer installs all files in one pass and creates `/etc/amnezia-client/settings.conf` if it does not exist. When launched through `bash <(curl ...)`, it also saves an executable `install.sh` in the current directory. Existing settings are kept. You do not need to rerun the installer after filling them in.
+The installer installs all files in one pass and creates `/opt/amnezia-client/settings.conf` if it does not exist. The installer itself is saved as `/opt/amnezia-client/install.sh`. Existing settings are kept. You do not need to rerun the installer after filling them in.
 
 ## Configure
 
 After installation, edit settings:
 
 ```bash
-vi /etc/amnezia-client/settings.conf
+vi /opt/amnezia-client/settings.conf
 ```
 
 Fill in `LOCAL_IF` and `LOCAL_NET`. Review the defaults and change them if needed:
@@ -109,7 +111,7 @@ The container has the `unless-stopped` restart policy. `run.sh` reports success 
 Host forwarding and PBR are applied by `run.sh`; no separate activation command is needed. To inspect the result:
 
 ```bash
-amnezia-pbr status
+/opt/amnezia-client/amnezia-pbr status
 ```
 
 The sysctl file restores forwarding at boot. On Debian 13, use `/etc/sysctl.d/`, not `/etc/sysctl.conf`.
@@ -138,7 +140,7 @@ Stop PBR **before** editing settings so cleanup uses the old values:
 
 ```bash
 systemctl stop amnezia-pbr.service
-vi /etc/amnezia-client/settings.conf
+vi /opt/amnezia-client/settings.conf
 ```
 
 For changes to container/network settings, recreate the container/network as needed, then run `run.sh`. It also starts PBR. For changes only to routing settings, start PBR after editing:
@@ -147,15 +149,15 @@ For changes to container/network settings, recreate the container/network as nee
 systemctl start amnezia-pbr.service
 ```
 
-For an upgrade, stop PBR first, rerun `install.sh`, and start PBR when ready. The installer updates scripts and service files while preserving settings. An older `pbr.conf` is no longer used: copy its values into `settings.conf` before completing the upgrade.
+For an upgrade, stop PBR first, rerun the curl installation command (or run `install.sh` from a fresh checkout), and start PBR when ready. The installer updates scripts and service files while preserving settings.
 
-If you recreate only the network or reload firewall rules, run `systemctl restart amnezia-pbr.service`. There is no periodic reconciliation timer. Repeating `amnezia-pbr apply` does not duplicate rules; conflicting priorities or routes are rejected.
+If you recreate only the network or reload firewall rules, run `systemctl restart amnezia-pbr.service`. There is no periodic reconciliation timer. Repeating `/opt/amnezia-client/amnezia-pbr apply` does not duplicate rules; conflicting priorities or routes are rejected.
 
 To disable PBR:
 
 ```bash
 systemctl disable --now amnezia-pbr.service
-amnezia-pbr remove
+/opt/amnezia-client/amnezia-pbr remove
 ```
 
 This removes the configured PBR rules, tagged firewall rules and two reserved routes. Other tables/rules and `main` are kept. Forwarding, the Docker network and container are left in place. Run `remove` with the original settings if a start failed halfway.
@@ -178,11 +180,11 @@ sudo /opt/amnezia-client/uninstall.sh
 
 The uninstaller lists the files it will delete and asks `Proceed? [Y/n]`. Enter `n` to cancel, or `Y`/Enter to continue. It requires a response; an unreadable/closed input cancels removal.
 
-After confirmation, it stops and disables PBR, removes the configured PBR routes and tagged firewall rules, then deletes the installed scripts, service, settings and sysctl file. The legacy `pbr.conf` is removed if present. Empty project directories are removed; directories containing your profile or other files remain.
+After confirmation, it stops and disables PBR, removes the configured PBR routes and tagged firewall rules, then deletes the installed scripts, service, settings and sysctl file. Empty project directories are removed; directories containing your profile or other files remain.
 
 **Your `awg.conf` is preserved**, including a custom profile path from settings. Docker containers, networks and images are not removed. Forwarding is not switched off in the running system. Stopping PBR interrupts VPN routing for the selected LAN traffic.
 
-The installer records the path and checksum of its saved local `install.sh`. The uninstaller deletes that copy only if it is unchanged. Repository source files and unrelated files are left alone. Older installations without this record may leave a saved installer to remove manually.
+Repository source files and unrelated files are left alone.
 
 Uninstalling before filling in settings is supported. If PBR is still active but its settings are invalid, removal stops so the rules are not left behind without their helper files. Fix settings and rerun the uninstaller.
 
@@ -190,15 +192,14 @@ Uninstalling before filling in settings is supported. If PBR is still active but
 
 | File | Destination |
 | --- | --- |
-| `settings.conf.example` | `/etc/amnezia-client/settings.conf` |
+| `install.sh` | `/opt/amnezia-client/install.sh` |
+| `settings.conf.example` | `/opt/amnezia-client/settings.conf` |
 | `run.sh` | `/opt/amnezia-client/run.sh` |
 | `uninstall.sh` | `/opt/amnezia-client/uninstall.sh` |
-| `common.sh` | `/usr/local/lib/amnezia-client/common.sh` |
-| `amnezia-pbr` | `/usr/local/sbin/amnezia-pbr` |
+| `common.sh` | `/opt/amnezia-client/common.sh` |
+| `amnezia-pbr` | `/opt/amnezia-client/amnezia-pbr` |
 | `amnezia-pbr.service` | `/etc/systemd/system/amnezia-pbr.service` |
 | `90-awg-forwarding.conf.example` | `/etc/sysctl.d/90-awg-forwarding.conf` |
-
-The installer also writes `/etc/amnezia-client/install-state.conf` to track its saved copy.
 
 Keep settings root-owned and writable only by root; they are loaded as Bash code. No VPN keys belong in settings: they stay in `awg.conf`.
 

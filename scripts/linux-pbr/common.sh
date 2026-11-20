@@ -1,7 +1,8 @@
 #!/bin/bash
 # Shared settings checks for the container launcher and PBR helper.
 
-SETTINGS_FILE="${AMNEZIA_SETTINGS:-/etc/amnezia-client/settings.conf}"
+APP_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SETTINGS_FILE="${AMNEZIA_SETTINGS:-$APP_DIR/settings.conf}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 

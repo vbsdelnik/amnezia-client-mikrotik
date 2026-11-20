@@ -9,8 +9,8 @@ StartLimitIntervalSec=0
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/sbin/amnezia-pbr apply
-ExecStop=/usr/local/sbin/amnezia-pbr remove
+ExecStart=/opt/amnezia-client/amnezia-pbr apply
+ExecStop=/opt/amnezia-client/amnezia-pbr remove
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=90s

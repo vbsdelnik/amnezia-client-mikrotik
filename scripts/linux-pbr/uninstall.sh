@@ -6,39 +6,26 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "Run as root."
 command -v systemctl >/dev/null || die "A systemd host is required."
 
-STATE_FILE=/etc/amnezia-client/install-state.conf
-INSTALLER_COPY=""
-INSTALLER_SHA256=""
-SETTINGS_PATH=/etc/amnezia-client/settings.conf
-if [[ -f "$STATE_FILE" ]]; then
-    source "$STATE_FILE"
-fi
-SETTINGS_FILE="${AMNEZIA_SETTINGS:-$SETTINGS_PATH}"
-PROFILE_FILE=/opt/amnezia-client/awg.conf
+APP_DIR=/opt/amnezia-client
+SETTINGS_FILE="$APP_DIR/settings.conf"
+PBR_HELPER="$APP_DIR/amnezia-pbr"
+COMMON_FILE="$APP_DIR/common.sh"
+PROFILE_FILE="$APP_DIR/awg.conf"
 if [[ -f "$SETTINGS_FILE" ]]; then
     PROFILE_FILE=$(bash -c 'source "$1" || exit 1; printf "%s" "${AWG_CONFIG:-/opt/amnezia-client/awg.conf}"' _ "$SETTINGS_FILE") ||
         die "Cannot read settings. Fix their syntax before uninstalling."
 fi
 
 FILES=(
-    /opt/amnezia-client/run.sh
-    /opt/amnezia-client/uninstall.sh
-    /usr/local/sbin/amnezia-pbr
-    /usr/local/lib/amnezia-client/common.sh
+    "$APP_DIR/install.sh"
+    "$APP_DIR/run.sh"
+    "$APP_DIR/uninstall.sh"
+    "$APP_DIR/amnezia-pbr"
+    "$APP_DIR/common.sh"
+    "$SETTINGS_FILE"
     /etc/systemd/system/amnezia-pbr.service
     /etc/sysctl.d/90-awg-forwarding.conf
-    "$SETTINGS_FILE"
-    /etc/amnezia-client/pbr.conf
-    "$STATE_FILE"
 )
-if [[ -n "$INSTALLER_COPY" && -f "$INSTALLER_COPY" && ! -L "$INSTALLER_COPY" && -n "$INSTALLER_SHA256" ]]; then
-    read -r current_hash _ < <(sha256sum -- "$INSTALLER_COPY")
-    if [[ "$current_hash" == "$INSTALLER_SHA256" ]]; then
-        FILES+=("$INSTALLER_COPY")
-    else
-        printf 'Keeping the modified saved installer: %s\n' "$INSTALLER_COPY"
-    fi
-fi
 
 # No recursive directory deletion; the AWG profile and unrelated files stay in place.
 DELETE_FILES=()
@@ -61,8 +48,8 @@ case "$answer" in
 esac
 
 can_cleanup=0
-if [[ -x /usr/local/sbin/amnezia-pbr && -f /usr/local/lib/amnezia-client/common.sh && -f "$SETTINGS_FILE" ]]; then
-    if AMNEZIA_SETTINGS="$SETTINGS_FILE" bash -e -c 'source /usr/local/lib/amnezia-client/common.sh; load_settings' >/dev/null 2>&1; then
+if [[ -x "$PBR_HELPER" && -f "$COMMON_FILE" && -f "$SETTINGS_FILE" ]]; then
+    if AMNEZIA_SETTINGS="$SETTINGS_FILE" bash -e -c 'source "$1"; load_settings' _ "$COMMON_FILE" >/dev/null 2>&1; then
         can_cleanup=1
     fi
 fi
@@ -77,11 +64,11 @@ if [[ -e /etc/systemd/system/amnezia-pbr.service ]] || systemctl is-active --qui
     systemctl disable --now amnezia-pbr.service || die "Could not stop/disable PBR; files kept."
 fi
 if [[ $can_cleanup -eq 1 ]]; then
-    AMNEZIA_SETTINGS="$SETTINGS_FILE" /usr/local/sbin/amnezia-pbr remove || die "PBR cleanup failed; files kept."
+    AMNEZIA_SETTINGS="$SETTINGS_FILE" "$PBR_HELPER" remove || die "PBR cleanup failed; files kept."
 fi
 
 if [[ ${#DELETE_FILES[@]} -gt 0 ]]; then rm -f -- "${DELETE_FILES[@]}"; fi
 systemctl daemon-reload
 systemctl reset-failed amnezia-pbr.service 2>/dev/null || true
-rmdir /etc/amnezia-client /usr/local/lib/amnezia-client /opt/amnezia-client 2>/dev/null || true
+rmdir "$APP_DIR" 2>/dev/null || true
 printf '\nUninstallation completed. AWG configuration, Docker resources and unrelated files were preserved.\n'
