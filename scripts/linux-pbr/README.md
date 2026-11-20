@@ -22,7 +22,7 @@ sudo -i
 bash <(curl -fsSL https://raw.githubusercontent.com/vbsdelnik/amnezia-client-mikrotik/main/scripts/linux-pbr/install.sh)
 ```
 
-On the first run, the installer creates `/etc/amnezia-client/settings.conf` and stops with a message to complete it. It returns a nonzero exit code until the settings are filled in. No other components are installed at this stage.
+When launched through `bash <(curl ...)`, the installer saves an executable `install.sh` in your current directory. On the first run, it creates `/etc/amnezia-client/settings.conf` and asks you to replace the `CHANGE_ME` values. It stops with a nonzero exit code until settings are complete. The remaining components are not installed yet.
 
 ```bash
 vi /etc/amnezia-client/settings.conf
@@ -58,7 +58,13 @@ ip -4 rule show
 ip -4 route show table all
 ```
 
-Run the installer again using the same command. If any required setting is empty or contains `CHANGE_ME`, it lists the fields to fill and stops. Otherwise it installs the files and prints the next command:
+After editing settings, run the saved installer from the same directory:
+
+```bash
+./install.sh
+```
+
+It downloads the required files again as needed. If a required setting is empty or contains `CHANGE_ME`, installation stops. Otherwise it installs the files and prints the next command:
 
 ```bash
 sudo /opt/amnezia-client/run.sh

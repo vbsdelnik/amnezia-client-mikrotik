@@ -12,20 +12,32 @@ if systemctl is-active --quiet amnezia-pbr.service; then
     die "Stop amnezia-pbr.service with its current settings before upgrading."
 fi
 
-FILES=(settings.conf.example common.sh run.sh amnezia-pbr amnezia-pbr.service 90-awg-forwarding.conf.example)
+FILES=(install.sh settings.conf.example common.sh run.sh amnezia-pbr amnezia-pbr.service 90-awg-forwarding.conf.example)
 SCRIPT_DIR=""
 SOURCE_FILE="${BASH_SOURCE[0]:-}"
 DOWNLOAD_DIR=""
+SAVE_INSTALLER=0
+RERUN_COMMAND="./install.sh"
+SETTINGS_PENDING=0
 
 cleanup() {
+    local status=$?
     if [[ -n "$DOWNLOAD_DIR" ]]; then
         rm -rf -- "$DOWNLOAD_DIR"
+    fi
+    if [[ $status -ne 0 && $SETTINGS_PENDING -eq 1 ]]; then
+        printf '\nAfter completing %s, run:\n  %s\n' "$SETTINGS_FILE" "$RERUN_COMMAND" >&2
     fi
 }
 trap cleanup EXIT
 
 if [[ -n "$SOURCE_FILE" && -f "$SOURCE_FILE" ]]; then
     SCRIPT_DIR="$(cd -- "$(dirname -- "$SOURCE_FILE")" && pwd)"
+    if [[ "$SCRIPT_DIR" != "$(pwd -P)" ]]; then
+        RERUN_COMMAND="$SCRIPT_DIR/$(basename -- "$SOURCE_FILE")"
+    fi
+else
+    SAVE_INSTALLER=1
 fi
 need_download=0
 for file in "${FILES[@]}"; do
@@ -42,14 +54,25 @@ if [[ $need_download -eq 1 ]]; then
     done
 fi
 
+if [[ $SAVE_INSTALLER -eq 1 ]]; then
+    if [[ -e ./install.sh || -L ./install.sh ]]; then
+        [[ -f ./install.sh && ! -L ./install.sh ]] || die "Cannot save ./install.sh: the path is not a regular file."
+        cmp -s "$SCRIPT_DIR/install.sh" ./install.sh || die "A different ./install.sh already exists. Rename it or run this command in an empty directory."
+    fi
+    install -o 0 -g 0 -m 0755 "$SCRIPT_DIR/install.sh" ./install.sh
+    printf 'Saved installer: %s/install.sh\n' "$(pwd -P)"
+fi
+
 source "$SCRIPT_DIR/common.sh"
 if [[ ! -e "$SETTINGS_FILE" && ! -L "$SETTINGS_FILE" ]]; then
     install -d -m 0700 "$(dirname -- "$SETTINGS_FILE")"
     install -o 0 -g 0 -m 0600 "$SCRIPT_DIR/settings.conf.example" "$SETTINGS_FILE"
-    printf 'Created %s.\nFill LOCAL_IF and LOCAL_NET, review the defaults, then run this installer again.\n' "$SETTINGS_FILE"
+    printf 'Created %s.\nReplace CHANGE_ME values and review the defaults:\n  vi %s\n\nThen run:\n  %s\n' "$SETTINGS_FILE" "$SETTINGS_FILE" "$RERUN_COMMAND"
     exit 1
 fi
+SETTINGS_PENDING=1
 load_settings
+SETTINGS_PENDING=0
 
 # Installation only: do not start containers/services or apply sysctl settings.
 install -d -m 0755 /usr/local/sbin /usr/local/lib/amnezia-client /etc/systemd/system /etc/sysctl.d
