@@ -32,10 +32,7 @@ Build your own image:
 
 * [Building from Source](#building-from-source)
 
-For routed LAN traffic, also configure:
-
-* [Server Side Configuration](#server-side-configuration)
-* [MikroTik Routing](#mikrotik-routing), if MikroTik selects the traffic sent through the VPN
+For routed LAN traffic, follow [LAN Networks Behind MikroTik](#lan-networks-behind-mikrotik--optional) for the configuration steps.
 
 ## Images and Supported Architectures
 
