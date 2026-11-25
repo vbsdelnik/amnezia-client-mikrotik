@@ -488,36 +488,31 @@ This table belongs to MikroTik, outside the container. It is separate from the c
 
 ## Add Routes
 
-Choose **one** default route according to your deployment.
+Use **one** of the following route sets according to your deployment. Each set includes the transit network, the default route through the VPN next hop and the route back to the LAN.
 
 For a container running on MikroTik:
 
 ```routeros
 /ip/route
+add dst-address=172.18.20.4/30 gateway=veth-awg routing-table=amnezia scope=10
 add dst-address=0.0.0.0/0 gateway=172.18.20.6 routing-table=amnezia
+add dst-address=192.168.X.0/24 gateway=bridge-lan routing-table=amnezia scope=10
 ```
 
 For a container running on Debian:
 
 ```routeros
 /ip/route
+add dst-address=192.168.250.0/24 gateway=bridge-vpn routing-table=amnezia scope=10
 add dst-address=0.0.0.0/0 gateway=192.168.250.2 routing-table=amnezia
+add dst-address=192.168.X.0/24 gateway=bridge-lan routing-table=amnezia scope=10
 ```
 
-Add return routes to the LAN networks in the same table. For a directly connected LAN, use its actual LAN interface.
+Replace `bridge-vpn` with the MikroTik interface connected to Debian and `bridge-lan` with the interface serving the LAN. If `veth-awg` is attached to a bridge, use that bridge for the transit route instead.
 
-For example, if `192.168.X.0/24` is directly connected to `bridge-lan`:
+The transit route covers the directly connected network containing the VPN next hop. The LAN route sends replies back to the clients instead of through the default route again. Add a route for every LAN network that must be reachable through this table, or omit the example LAN route if it is not needed.
 
-```routeros
-/ip/route
-add dst-address=192.168.X.0/24 gateway=bridge-lan routing-table=amnezia
-```
-
-Replace `bridge-lan` with the existing interface serving that LAN. Do not use the container or Debian transit interface for a LAN located on another interface.
-
-For LAN networks behind another router, use the appropriate next-hop IP address instead of a directly connected interface.
-
-Repeat for every LAN network that must be reachable through this table.
+These interface routes describe directly connected networks; they are added as static routes in table `amnezia`. For LAN networks behind another router, use the appropriate next-hop IP address instead of a directly connected interface.
 
 ## Select LAN Traffic
 
