@@ -260,8 +260,20 @@ Create container:
     mountlists=amnezia-config \
     envlist=amneziawg \
     logging=yes \
-    start-on-boot=yes
+    start-on-boot=yes \
+    restart-policy=on-failure \
+    restart-interval=10s
 ```
+
+`restart-policy=on-failure` restarts the container after a failure, with a 10-second delay between attempts. `start-on-boot=yes` starts it after the router boots. This does not detect a lost VPN connection while the container process is still running.
+
+**RouterOS version compatibility:** The restart parameters above require RouterOS **7.23 or newer**. On RouterOS **7.20–7.22**, replace both `restart-policy=on-failure` and `restart-interval=10s` with:
+
+```routeros
+auto-restart-interval=10s
+```
+
+The older parameter is not available before RouterOS 7.20. See the [RouterOS 7.23 changelog](https://forum.mikrotik.com/t/v7-23-stable-is-released/270721/1) for the new restart parameters.
 
 Wait for image download/extraction to finish, then check `/container/print` and start the correct container. The example uses index `0`; replace it with your container's index:
 
