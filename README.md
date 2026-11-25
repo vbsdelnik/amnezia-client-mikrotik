@@ -819,24 +819,55 @@ These commands publish to the project repositories and require access to them. F
 
 Updating an image on a Docker workstation does not update the container installed on MikroTik. Restarting the RouterOS container alone also does not download a new image.
 
-To upgrade on RouterOS:
+Keep a copy of `/awg.conf` and record the container's interface, mount list, envlist and root directory. The example uses index `0`; replace it with your container's index. VPN traffic through the container will be interrupted.
 
-1. Keep a copy of `/awg.conf` and record the container's interface, mount list, envlist and root directory.
-2. Stop the client container. VPN traffic through it will be interrupted.
-3. Download and apply the new image using the container update or reimport procedure supported by your RouterOS version. If recreating the container, preserve the external configuration file and reuse the required mount list, envlist and interface settings.
-4. Start the container and verify its logs, handshake and connectivity from a LAN host.
+Identify and stop the client container:
+
+```routeros
+/container/print detail
+/container/stop 0
+```
+
+Wait until the container is stopped, then remove it:
+
+```routeros
+/container/print
+/container/remove 0
+```
+
+Repeat [Create and Start the Container](#create-and-start-the-container) to download the new image and create the container again. Reuse the existing veth interface, mount list and envlist; do not add them again. Keep the external configuration file. If the old root directory remains, choose a new, unused `root-dir` for the new container.
+
+Check the new container's index before starting it, then [verify the connection](#verify-the-connection) and test traffic from a LAN host.
 
 For version-specific update commands, see the [MikroTik Container documentation](https://help.mikrotik.com/docs/spaces/ROS/pages/84901929/Container).
 
 ## Linux Docker
 
-To download the latest AMD64 image:
+For a deployment using the Linux setup kit, run these commands as **root**. The examples use the default container name and AMD64 image; replace them with `CONTAINER_NAME` and `IMAGE` from settings if changed.
+
+Download the new image before stopping the existing container:
 
 ```bash
 docker pull vbsdelnik/amneziawg-client-amd64:latest
 ```
 
-This downloads the image only; an existing Docker container must be recreated to use it. Keep the external client configuration and existing container settings.
+This downloads the image only; an existing Docker container must be recreated to use it.
+
+Stop host PBR, then stop and remove the client container. VPN traffic through it will be interrupted:
+
+```bash
+systemctl stop amnezia-pbr.service
+docker stop amneziawg-client
+docker rm amneziawg-client
+```
+
+Keep `/opt/amnezia-client/settings.conf`, the external client profile and the Docker network. Recreate the container using the existing settings:
+
+```bash
+/opt/amnezia-client/run.sh
+```
+
+The script also reapplies host forwarding and starts PBR. See [Run the setup](scripts/linux-pbr/README.md#run-the-setup) and [Check host routing](scripts/linux-pbr/README.md#check-host-routing) to verify the connection and LAN forwarding.
 
 Updating the Linux setup scripts is separate from updating the image. See the [Linux setup instructions](scripts/linux-pbr/README.md#change-settings-upgrade-or-disable).
 
