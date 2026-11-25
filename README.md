@@ -821,17 +821,27 @@ Updating an image on a Docker workstation does not update the container installe
 
 Keep a copy of `/awg.conf` and record the container's interface, mount list, envlist and root directory. The example uses index `0`; replace it with your container's index. VPN traffic through the container will be interrupted.
 
-Identify and stop the client container:
+Identify the client container and note its index:
 
 ```routeros
 /container/print detail
+```
+
+Stop that container. Replace `0` with the index you identified:
+
+```routeros
 /container/stop 0
 ```
 
-Wait until the container is stopped, then remove it:
+Check its status and wait until it is stopped:
 
 ```routeros
 /container/print
+```
+
+Remove the stopped client container. Use its index from the latest output:
+
+```routeros
 /container/remove 0
 ```
 
