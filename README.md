@@ -2,21 +2,11 @@
 
 Docker container with an AmneziaWG client for Linux Docker environments and MikroTik RouterOS.
 
+Originally developed for the MikroTik RouterOS Container subsystem, the project also supports deployment on AMD64 Linux hosts with Docker Engine.
+
 The networking examples in this README use MikroTik RouterOS. For other environments, apply equivalent network settings appropriate to your setup.
 
-The project provides a lightweight container image containing:
-
-* amneziawg-go
-* amneziawg-tools (`awg`, `awg-quick`)
-* startup script (`start.sh`)
-* automatic tunnel initialization
-* connectivity validation
-* routed LAN support behind MikroTik
-* RouterOS Container compatibility
-
----
-
-# Features
+## Features
 
 * AmneziaWG userspace implementation
 * Automatic tunnel startup
@@ -24,149 +14,46 @@ The project provides a lightweight container image containing:
 * Handshake verification
 * Internet connectivity verification
 * External configuration via mounted file
-* Routed LAN support behind MikroTik
+* Routed LAN support
 * Optional automatic LAN route installation
 * Configurable handshake timeout
 * Configurable connectivity check target
-* No NAT required inside container
-* Suitable for RouterOS container subsystem
+* No NAT required inside the client container
+* Suitable for RouterOS container subsystem and Linux Docker environments
+
+## Choose Your Deployment
+
+Use an existing image:
+
+* [MikroTik Container Deployment](#mikrotik-container-deployment)
+* [Linux Container Deployment](#linux-container-deployment)
+
+Build your own image:
+
+* [Building from Source](#building-from-source)
+
+For routed LAN traffic, also configure:
+
+* [Server Side Configuration](#server-side-configuration)
+* [MikroTik Routing](#mikrotik-routing), if MikroTik selects the traffic sent through the VPN
+
+## Images and Supported Architectures
+
+| Architecture | Status | Docker Hub image |
+| --- | --- | --- |
+| ARMv7 | Supported | [vbsdelnik/amneziawg-client-arm](https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm) |
+| AMD64 | Supported | [vbsdelnik/amneziawg-client-amd64](https://hub.docker.com/r/vbsdelnik/amneziawg-client-amd64) |
+| ARM64 | Planned | — |
+
+Both images use the same configuration path, environment variables and startup logic.
+
+You do not need to build the image to use it. RouterOS downloads the selected image during container creation; Docker Engine downloads it when starting the container if it is not available locally.
 
 ---
 
-# Docker Hub
+# MikroTik Container Deployment
 
-Project image:
-
-```bash
-docker pull vbsdelnik/amneziawg-client-arm:latest
-```
-
-Repository: [Docker Hub](https://hub.docker.com/r/vbsdelnik/amneziawg-client-arm).
-
----
-
-# Project Structure
-
-```text
-.
-├── README.md
-├── arm/
-│   ├── Dockerfile
-│   ├── build.sh
-│   └── start.sh
-├── amd64/
-│   ├── Dockerfile
-│   ├── build.sh
-│   └── start.sh
-└── scripts/
-    └── linux-pbr/
-```
-
-ARMv7 and AMD64 have separate build directories. ARM64 is planned.
-
----
-
-# Supported Architectures
-
-| Architecture | Status    |
-| ------------ | --------- |
-| ARMv7        | Supported |
-| ARM64        | Planned   |
-| AMD64        | Build verified |
-
----
-
-# Configuration
-
-The container expects an external AWG configuration file:
-
-```text
-/config/awg.conf
-```
-
-The configuration is mounted from RouterOS and is not embedded into the image.
-
----
-
-# Example AWG Client Configuration
-
-```ini
-[Interface]
-Address = 10.8.1.17/32
-Table = off
-DNS = 1.1.1.1, 1.0.0.1
-MTU = 1376
-PrivateKey = <client-private-key>
-
-[Peer]
-PublicKey = <server-public-key>
-PresharedKey = <preshared-key>
-Endpoint = 203.0.113.10:51820
-AllowedIPs = 0.0.0.0/0
-PersistentKeepalive = 25
-```
-
-Replace the example endpoint with the server IPv4 address and UDP port. The current startup parser expects `Endpoint = IPv4:port` with the spacing shown above; hostname and IPv6 endpoints are not supported by this startup path.
-
-This example shows the configuration structure only. Include the AmneziaWG parameters exported for the target server; the example alone is not a complete AmneziaWG 3.1 profile.
-
-`Table = off` is intentional: `awg-quick` does not install routes. `start.sh` adds a host route to the endpoint through the original gateway, adds the optional LAN route, then replaces the container IPv4 default route with `default dev awg`. This keeps encrypted endpoint traffic outside the tunnel while sending other container traffic through it. It does not change the RouterOS routing tables.
-
-Before bringing up the tunnel, the script removes `/etc/resolv.conf` and runs `resolvconf -u`; `awg-quick` then applies the configuration DNS using openresolv.
-
----
-
-# Environment Variables
-
-The container supports optional environment variables supplied through RouterOS `envlist`.
-
-| Variable          | Required | Default | Description                                   |
-| ----------------- | -------- | ------- | --------------------------------------------- |
-| LOCAL_NET         | No       | —       | LAN IPv4 addresses or CIDRs, separated by commas           |
-| HANDSHAKE_TIMEOUT | No       | 30      | Time in seconds to wait for initial handshake |
-| PING_TARGET       | No       | 1.1.1.1 | IP address used for connectivity verification |
-| DEBUG             | No       | 0       | Set to 1 to print startup diagnostics         |
-
-Example (create the envlist once and replace `X` with your LAN subnet value):
-
-```routeros
-/container/envs
-add list=amneziawg key=LOCAL_NET value=192.168.X.0/24
-add list=amneziawg key=HANDSHAKE_TIMEOUT value=60
-add list=amneziawg key=PING_TARGET value=8.8.8.8
-```
-
-**Version compatibility:** Multiple addresses or subnets in `LOCAL_NET` are supported only in this project's 3.1 images. The 2.1 images support a single address or subnet only. This is a difference in the container startup script, not a limitation of the AmneziaWG protocol.
-
-`LOCAL_NET` accepts one IPv4 address or subnet, or a comma-separated list. Existing single-subnet values continue to work. Spaces around entries are allowed; an address without a prefix is treated as `/32`. All entries use the same original MikroTik gateway.
-
-For multiple entries, use this value instead of the single-subnet `LOCAL_NET` example above (replace `X` and `Y` with your values):
-
-```routeros
-/container/envs
-add list=amneziawg key=LOCAL_NET value="192.168.X.0/24,192.168.Y.0/24,10.10.10.5"
-```
-
-Create only one `LOCAL_NET` entry in the envlist, or edit the existing entry. The script splits the list on commas, trims spaces and skips empty entries. `ip` checks each address or subnet when adding its route. If a route command fails, startup stops; previously added routes are not rolled back. An unset or blank `LOCAL_NET` adds no local routes.
-
-Environment variables are used by `start.sh`:
-
-```bash
-HANDSHAKE_TIMEOUT="${HANDSHAKE_TIMEOUT:-30}"
-PING_TARGET="${PING_TARGET:-1.1.1.1}"
-```
-
-For each address or subnet in `LOCAL_NET`, the container installs a return route:
-
-```bash
-ip -4 route replace "$local_route" via "$REAL_GW" dev "$REAL_IF"
-```
-
-`REAL_GW` is the container default gateway captured before the VPN starts (172.18.20.5 in the topology below). These routes direct return traffic toward the local addresses and networks through MikroTik rather than back into the tunnel. Existing routes to the same destinations are replaced; choose entries that do not conflict with the transit network or VPN server endpoint. Server routing and forwarding must also be configured as described below.
-
----
-
-# RouterOS Network Topology
+## RouterOS Network Topology
 
 Example deployment:
 
@@ -183,25 +70,27 @@ Example deployment:
                         |
         +--------------------------------+
         |      AWG Container             |
-        |      10.8.1.17/32              |
-        |      172.18.20.6/30            |
+        |      Tunnel: 10.8.1.17/32       |
+        |      veth:   172.18.20.6/30     |
         +--------------------------------+
                         |
                         |
-              MikroTik gateway
-                 172.18.20.5/30
-                        |
-                        |
-                 MikroTik Router
+        +--------------------------------+
+        |      MikroTik Router           |
+        |      veth: 172.18.20.5/30       |
+        |      LAN:  192.168.X.1/24       |
+        +--------------------------------+
                         |
                         |
                  192.168.X.0/24
                     Local LAN
 ```
 
----
+`172.18.20.5` is the MikroTik address used as the container's original gateway. It belongs to the same MikroTik router that serves the LAN.
 
-# RouterOS Prerequisites
+Replace `X` with your LAN subnet value. The LAN address is an example; keep your existing LAN configuration.
+
+## RouterOS Prerequisites and Limitations
 
 Before deployment:
 
@@ -217,11 +106,32 @@ Configure Docker Hub as the image registry if it is not already configured:
 set registry-url=https://registry-1.docker.io
 ```
 
+RouterOS container subsystem may not provide full netfilter support.
+
+The following may be unavailable:
+
+* iptables
+* iptables-restore
+* nftables
+
+Because of this, routed networking is preferred over NAT inside the client container.
+
 See the [MikroTik Container documentation](https://help.mikrotik.com/docs/spaces/ROS/pages/84901929/Container) for the prerequisites and options supported by your RouterOS version.
 
----
+## Deployment Steps
 
-# Creating veth Interface
+To deploy the container:
+
+1. [Create the veth interface](#creating-veth-interface).
+2. [Prepare the AWG client configuration](#example-awg-client-configuration).
+3. [Configure the mount](#mount-configuration).
+4. [Create the environment list](#environment-list).
+5. [Create and start the container](#create-and-start-the-container).
+6. [Verify the connection](#verify-the-connection).
+
+For traffic from other devices, complete [LAN Networks Behind MikroTik](#lan-networks-behind-mikrotik--optional).
+
+## Creating veth Interface
 
 Create veth interface on RouterOS:
 
@@ -251,9 +161,43 @@ Addresses:
 | MikroTik  | 172.18.20.5/30 |
 | Container | 172.18.20.6/30 |
 
----
+## Example AWG Client Configuration
 
-# Mount Configuration
+The container expects an external AWG configuration file:
+
+```text
+/config/awg.conf
+```
+
+The configuration is mounted from the host and is not embedded into the image. On RouterOS, the examples use `/awg.conf` as the source file.
+
+Use the client profile exported for your server. The following example shows the configuration structure:
+
+```ini
+[Interface]
+Address = 10.8.1.17/32
+Table = off
+DNS = 1.1.1.1, 1.0.0.1
+MTU = 1376
+PrivateKey = <client-private-key>
+
+[Peer]
+PublicKey = <server-public-key>
+PresharedKey = <preshared-key>
+Endpoint = 203.0.113.10:51820
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+```
+
+Replace the example endpoint with the server IPv4 address and UDP port. The current startup parser expects `Endpoint = IPv4:port` with the spacing shown above; hostname and IPv6 endpoints are not supported by this startup path.
+
+Include the AmneziaWG parameters exported for the target server; the example alone is not a complete AmneziaWG 3.1 profile.
+
+`Table = off` is intentional: `awg-quick` does not install routes. `start.sh` adds a host route to the endpoint through the original gateway, adds the optional LAN routes, then replaces the container IPv4 default route with `default dev awg`. This keeps encrypted endpoint traffic outside the tunnel while sending other container traffic through it. It does not change the RouterOS routing tables.
+
+Before bringing up the tunnel, the script removes `/etc/resolv.conf` or clears its contents if the file cannot be removed, then runs `resolvconf -u`. `awg-quick` applies the configuration DNS using openresolv.
+
+## Mount Configuration
 
 Place `awg.conf` at `/awg.conf` on RouterOS and mount the file into the container:
 
@@ -266,15 +210,48 @@ add \
     dst=/config/awg.conf
 ```
 
----
+## Environment List
 
-# Environment List
+The container supports optional environment variables supplied through RouterOS `envlist`.
 
-Create the `amneziawg` envlist using the example in [Environment Variables](#environment-variables) if you have not already done so. The container uses this list through `envlist=amneziawg`.
+| Variable          | Required | Default | Description                                   |
+| ----------------- | -------- | ------- | --------------------------------------------- |
+| LOCAL_NET         | No       | —       | LAN IPv4 addresses or CIDRs, separated by commas           |
+| HANDSHAKE_TIMEOUT | No       | 30      | Time in seconds to wait for initial handshake |
+| PING_TARGET       | No       | 1.1.1.1 | IP address used for connectivity verification |
+| DEBUG             | No       | 0       | Set to 1 to print startup diagnostics         |
 
----
+Example (create the envlist once and replace `X` with your LAN subnet value):
 
-# Container Deployment
+```routeros
+/container/envs
+add list=amneziawg key=LOCAL_NET value=192.168.X.0/24
+add list=amneziawg key=HANDSHAKE_TIMEOUT value=60
+add list=amneziawg key=PING_TARGET value=8.8.8.8
+```
+
+The container uses this list through `envlist=amneziawg`.
+
+**Version compatibility:** Multiple addresses or subnets in `LOCAL_NET` are supported only in this project's 3.1 images. The 2.1 images support a single address or subnet only. This is a difference in the container startup script, not a limitation of the AmneziaWG protocol.
+
+`LOCAL_NET` accepts one IPv4 address or subnet, or a comma-separated list. Existing single-subnet values continue to work. Spaces around entries are allowed; an address without a prefix is treated as `/32`. All entries use the same original container gateway.
+
+For multiple entries, use this value instead of the single-subnet `LOCAL_NET` example above (replace `X` and `Y` with your values):
+
+```routeros
+/container/envs
+add list=amneziawg key=LOCAL_NET value="192.168.X.0/24,192.168.Y.0/24,10.10.10.5"
+```
+
+Create only one `LOCAL_NET` entry in the envlist, or edit the existing entry. The script splits the list on commas, trims spaces and skips empty entries. `ip` checks each address or subnet when adding its route. If a route command fails, startup stops; previously added routes are not rolled back. An unset or blank `LOCAL_NET` adds no local routes.
+
+For each address or subnet in `LOCAL_NET`, the container installs a return route through its original gateway (`172.18.20.5` in the RouterOS topology).
+
+These routes direct return traffic toward the local addresses and networks rather than back into the tunnel. Existing routes to the same destinations are replaced; choose entries that do not conflict with the transit network or VPN server endpoint.
+
+`LOCAL_NET` only controls client return routes; it does not configure the server or select MikroTik traffic.
+
+## Create and Start the Container
 
 Create container:
 
@@ -296,39 +273,34 @@ Wait for image download/extraction to finish, then check `/container/print` and 
 /container/start 0
 ```
 
+## Verify the Connection
+
 View container logs (`logging=yes` must be enabled). This shows messages for all containers:
 
 ```routeros
 /log/print where topics~"container"
 ```
 
----
-
-# MikroTik Routing
-
-Create the RouterOS routing table if it does not already exist:
+Open the client container shell:
 
 ```routeros
-/routing/table
-add name=amnezia fib
+/container/shell 0
 ```
 
-This table belongs to MikroTik, outside the container. It is separate from the client's `Table = off` setting.
+Run inside the container:
 
-Add the route through the container to this table:
-
-```routeros
-/ip/route
-add dst-address=0.0.0.0/0 gateway=172.18.20.6 routing-table=amnezia
+```bash
+awg show
+ip addr show awg
+ip route
+ping -c 3 1.1.1.1
 ```
 
-Select the traffic that should use this table with routing rules or mangle marks according to your deployment requirements. Adding the route alone does not select any LAN traffic. Keep the VPN server endpoint reachable through the normal Internet path to avoid sending the tunnel's own traffic back into the tunnel.
+Check that the interface exists, a successful handshake has been recorded and Internet connectivity works.
 
-See [MikroTik Policy Routing](https://help.mikrotik.com/docs/spaces/ROS/pages/59965508/Policy+Routing) for routing table and traffic selection examples.
+A successful ping from the container does not verify LAN forwarding. Test traffic from an actual LAN host after completing the routing and server configuration below.
 
----
-
-# Routed Networks Behind MikroTik
+## LAN Networks Behind MikroTik — Optional
 
 The client container routes LAN traffic without NAT. NAT for Internet access is configured in the server container.
 
@@ -339,25 +311,95 @@ LAN behind MikroTik: 192.168.X.0/24
 AWG client address:  10.8.1.17/32
 ```
 
-Set `LOCAL_NET` to the LAN addresses or subnets so the client container adds a return route for each through the MikroTik gateway. MikroTik selects which LAN traffic to send through the VPN.
-
 For this setup to work:
 
-* The server peer's `AllowedIPs` must include the client tunnel address and LAN subnet.
-* The server must have a route to the LAN through its AWG interface.
-* IPv4 forwarding must be enabled in both the client and server containers, and firewall rules must allow the traffic. The client `start.sh` does not enable forwarding itself.
-* MikroTik must route the selected LAN traffic to the client container and allow return traffic.
-* The server container must have a MASQUERADE rule for the LAN subnet to provide Internet access.
+1. Set `LOCAL_NET` to the LAN addresses or subnets so the client container adds a return route for each through the MikroTik gateway. See [Environment List](#environment-list).
+2. Configure the server peer's AllowedIPs, LAN routing and firewall/NAT rules. See [Server Side Configuration](#server-side-configuration).
+3. Configure MikroTik to route the selected LAN traffic to the client container and allow return traffic. See [MikroTik Routing](#mikrotik-routing).
+4. Test Internet access from an actual LAN host routed through the client.
 
-For multiple entries, include every local address or subnet in the server peer's `AllowedIPs` and configure the corresponding server routes and firewall/NAT rules. Use `/32` for individual addresses. `LOCAL_NET` only controls client return routes; it does not configure the server or select MikroTik traffic.
+IPv4 forwarding must be enabled in both the client and server containers, and firewall rules must allow the traffic. The client `start.sh` does not enable forwarding itself.
 
-See [Server Side Configuration](#server-side-configuration) for server configuration and verification steps.
+For multiple entries, include every local address or subnet in the server peer's `AllowedIPs` and configure the corresponding server routes and firewall/NAT rules. Use `/32` for individual addresses.
+
+---
+
+# Linux Container Deployment
+
+For a Debian 13 gateway, [scripts/linux-pbr](scripts/linux-pbr/README.md) provides an installer/uninstaller, shared `settings.conf`, a setup script (`run.sh`) and persistent host policy routing.
+
+The working files are kept together in `/opt/amnezia-client/`; only the systemd unit and sysctl file are installed under `/etc/`.
+
+## Linux Network Topology
+
+Example deployment with an upstream MikroTik router:
+
+```text
+                    Internet
+                        |
+                 AWG VPS Server
+                    10.8.1.0/24
+                        |
+                  AWG Tunnel
+                        |
+        +--------------------------------+
+        |      AWG Container             |
+        |      Tunnel: 10.8.1.17/32       |
+        |      Docker: 172.18.20.6/30     |
+        +--------------------------------+
+                        |
+        +--------------------------------+
+        |      Debian Gateway            |
+        |      Docker: 172.18.20.5/30     |
+        |      Uplink: 192.168.250.2/24   |
+        +--------------------------------+
+                        |
+        +--------------------------------+
+        |      MikroTik Router           |
+        |      Transit: 192.168.250.1/24  |
+        |      LAN:     192.168.X.1/24    |
+        +--------------------------------+
+                        |
+                 192.168.X.0/24
+                    Local LAN
+```
+
+MikroTik sends selected traffic to Debian. Debian sends selected transit traffic through the client container using a separate routing table; the host's main routing table is preserved.
+
+The Docker transit subnet is separate from the network between Debian and MikroTik.
+
+## Deploy Using the Linux Setup Kit
+
+Install the files in one pass, fill in settings, then run the setup script separately to start the container and apply forwarding and PBR.
+
+Run the installer as **root** in a Bash shell:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/vbsdelnik/amnezia-client-mikrotik/main/scripts/linux-pbr/install.sh)
+```
+
+After installation:
+
+1. Fill in `/opt/amnezia-client/settings.conf`.
+2. Place the client profile at `AWG_CONFIG` from settings (default: `/opt/amnezia-client/awg.conf`).
+3. Run `/opt/amnezia-client/run.sh`.
+4. Verify the container connection and host policy routing.
+
+The installer does not run `run.sh` automatically.
+
+Follow the [Linux setup instructions](scripts/linux-pbr/README.md) for prerequisites, settings, verification, persistence after reboot and uninstallation. These files are installed on the Linux host, not inside the VPN image.
+
+Configure the server as described in [Server Side Configuration](#server-side-configuration).
+
+If MikroTik selects the traffic sent to Debian, follow [MikroTik Routing](#mikrotik-routing) using the Debian address as the next hop.
 
 ---
 
 # Server Side Configuration
 
 The following instructions apply to the server container `amnezia-awg2`, which loads `/opt/amnezia/awg/awg0.conf` with `awg-quick` and runs the iptables commands in `/opt/amnezia/start.sh` on every startup. Run the commands on the VPS host.
+
+These steps apply to LAN traffic routed through either the RouterOS or Linux client deployment.
 
 Replace `192.168.X.0/24` with your LAN subnet before applying the examples. Keep the actual client tunnel address (shown as `10.8.1.17/32` here) and all other existing AllowedIPs. The examples use `awg0` as the server VPN interface and `eth0` as the server container egress interface.
 
@@ -414,19 +456,254 @@ Replace `192.168.X.0/24` with your LAN subnet before applying the examples. Keep
 
    The selected peer must include the LAN in AllowedIPs, and the route to a LAN host must use `awg0`. The server starts the interface with `awg-quick`, which can install the route from AllowedIPs depending on its routing settings; verify the result before adding a route manually. Test Internet access from an actual LAN host routed through the client.
 
+For multiple LAN addresses or subnets, repeat the corresponding AllowedIPs and firewall/NAT configuration for every entry.
+
 The shown server startup script recreates the firewall rules directly; it does not load an `iptables-save` file. A separate `iptables-save` is not required for this method. These changes remain after restarting the container. Persistence after container recreation depends on the deployment mounts; keep copies before recreating or upgrading the server container.
 
 ---
 
-# Linux Policy Routing
+# MikroTik Routing
 
-For a Debian 13 gateway, [scripts/linux-pbr](scripts/linux-pbr/README.md) provides an installer/uninstaller, shared `settings.conf`, a setup script (`run.sh`) and persistent host policy routing. The working files are kept together in `/opt/amnezia-client/`; only the systemd unit and sysctl file are installed under `/etc/`. Install the files in one pass, fill in settings, then run the setup script separately to start the container and apply forwarding and PBR. Selected transit traffic uses a separate table through the client container; the host's main routing table is preserved.
+MikroTik selects which LAN traffic to send through the VPN.
 
-Follow the installation instructions in that directory. These files are installed on the Linux host, not inside the VPN image.
+The next hop depends on the deployment:
+
+| Deployment | MikroTik next hop |
+| --- | --- |
+| Container on MikroTik | Container address: `172.18.20.6` |
+| Container on Debian | Debian address: `192.168.250.2` |
+
+The examples below use table `amnezia`. Replace example addresses and interface names with your values.
+
+## Create the Routing Table
+
+Create the RouterOS routing table if it does not already exist:
+
+```routeros
+/routing/table
+add name=amnezia fib
+```
+
+This table belongs to MikroTik, outside the container. It is separate from the client's `Table = off` setting.
+
+## Add Routes
+
+Choose **one** default route according to your deployment.
+
+For a container running on MikroTik:
+
+```routeros
+/ip/route
+add dst-address=0.0.0.0/0 gateway=172.18.20.6 routing-table=amnezia
+```
+
+For a container running on Debian:
+
+```routeros
+/ip/route
+add dst-address=0.0.0.0/0 gateway=192.168.250.2 routing-table=amnezia
+```
+
+Add return routes to the LAN networks in the same table. For a directly connected LAN, use its actual LAN interface.
+
+For example, if `192.168.X.0/24` is directly connected to `bridge-lan`:
+
+```routeros
+/ip/route
+add dst-address=192.168.X.0/24 gateway=bridge-lan routing-table=amnezia
+```
+
+Replace `bridge-lan` with the existing interface serving that LAN. Do not use the container or Debian transit interface for a LAN located on another interface.
+
+For LAN networks behind another router, use the appropriate next-hop IP address instead of a directly connected interface.
+
+Repeat for every LAN network that must be reachable through this table.
+
+## Select LAN Traffic
+
+Create an address list containing the LAN networks and a list of clients whose traffic should use the VPN.
+
+The example sends traffic from `192.168.X.10` through the VPN:
+
+```routeros
+/ip/firewall/address-list
+add list=local-nets address=192.168.X.0/24
+add list=to-amnezia address=192.168.X.10
+```
+
+Add the other local networks to `local-nets` as needed. To select an entire subnet, use its CIDR in `to-amnezia` instead of an individual client address.
+
+Add the mangle rules in the order shown:
+
+```routeros
+/ip/firewall/mangle
+add \
+    action=accept \
+    chain=prerouting \
+    comment="Skip mangle processing for LAN-LAN traffic" \
+    dst-address-list=local-nets \
+    in-interface-list=!WAN \
+    src-address-list=local-nets
+
+add \
+    action=mark-connection \
+    chain=prerouting \
+    comment="Mark connections from to-amnezia IPs" \
+    connection-mark=no-mark \
+    in-interface-list=!WAN \
+    new-connection-mark=to-amnezia \
+    passthrough=yes \
+    src-address-list=to-amnezia
+
+add \
+    action=mark-routing \
+    chain=prerouting \
+    comment="Routing marked connections via amnezia routing table" \
+    connection-mark=to-amnezia \
+    new-routing-mark=amnezia \
+    passthrough=no
+```
+
+These examples assume an existing interface list named `WAN` containing the Internet-facing interfaces. Place the rules before other mangle rules that would otherwise select a different routing table.
+
+The connection mark applies to both directions. The final rule therefore sends both requests and replies through table `amnezia`. This is why the table must include routes to the LAN networks as well as the VPN default route.
+
+The LAN–LAN rule skips further processing in the mangle chain; it does not bypass the firewall filter.
+
+Adding the default route alone does not select any LAN traffic. Keep the VPN server endpoint reachable through the normal Internet path to avoid sending the tunnel's own traffic back into the tunnel.
+
+Firewall rules must allow forwarding to the VPN next hop and back to the selected LAN clients. Exclude these connections from FastTrack if FastTrack is configured.
+
+See [MikroTik Policy Routing](https://help.mikrotik.com/docs/spaces/ROS/pages/59965508/Policy+Routing) for routing table and traffic selection examples.
+
+## Verify LAN Traffic
+
+Test Internet access from an actual LAN host selected in `to-amnezia`.
+
+Check the routing table and mangle counters:
+
+```routeros
+/ip/route/print detail where routing-table=amnezia
+/ip/firewall/mangle/print stats
+```
+
+If requests leave but replies do not reach the LAN client, check:
+
+* The LAN return routes in table `amnezia`.
+* The interface or next hop selected for each LAN route.
+* ARP resolution for the client on the correct LAN interface.
+* Forwarding firewall rules.
+
+For a directly connected LAN client, a failed ARP entry on the VPN transit interface usually indicates an incorrect LAN route.
 
 ---
 
-# Building
+# Troubleshooting and Runtime Checks
+
+## Container Diagnostics
+
+Run the following Linux commands inside the client container, not on the VPS or in the RouterOS terminal.
+
+On RouterOS, identify the container and open its shell (replace index `0` as needed):
+
+```routeros
+/container/print
+/container/shell 0
+```
+
+On Linux, open the container shell (replace the container name as needed):
+
+```bash
+docker exec -it amneziawg-client sh
+```
+
+Check handshake:
+
+```bash
+awg show
+```
+
+Check interface:
+
+```bash
+ip addr show awg
+```
+
+Check routing:
+
+```bash
+ip route
+```
+
+Check connectivity:
+
+```bash
+ping -c 3 1.1.1.1
+```
+
+For logs on RouterOS, return to the RouterOS terminal. Enable logging for the correct container if needed:
+
+```routeros
+/container/set 0 logging=yes
+/log/print where topics~"container"
+```
+
+For logs on Linux:
+
+```bash
+docker logs -f amneziawg-client
+```
+
+For Linux host routing and systemd diagnostics, see the [Linux setup instructions](scripts/linux-pbr/README.md#check-host-routing).
+
+## Runtime Checks
+
+At startup, `start.sh` waits up to `HANDSHAKE_TIMEOUT` seconds for a nonzero `latest-handshakes` timestamp on `awg`. Zero means that no successful handshake has been recorded for that peer since its creation. A timeout produces a warning; the subsequent connectivity ping must succeed or the startup script exits.
+
+The Docker HEALTHCHECK checks the same interface every 30 seconds. It succeeds when at least one peer has a nonzero handshake timestamp. This confirms a past handshake, not current connectivity: the timestamp remains nonzero after a connection is lost.
+
+After startup, the script waits with `tail -f /dev/null`; it does not periodically ping or supervise the VPN process. Docker marks a failed HEALTHCHECK as unhealthy but does not restart the container solely for that status. Do not assume RouterOS executes Docker HEALTHCHECK metadata; verify monitoring and restart behavior on the deployed RouterOS version.
+
+---
+
+# Building from Source
+
+Use this section if you want to build the image yourself. To deploy an existing image, follow [MikroTik Container Deployment](#mikrotik-container-deployment) or [Linux Container Deployment](#linux-container-deployment).
+
+## Build Requirements
+
+Docker with Buildx is required.
+
+Docker Desktop supports building these platforms through emulation. On other Docker installations, building for a different CPU architecture requires a suitable builder or emulation.
+
+Clone the repository and open its directory before running the commands below.
+
+## Project Structure
+
+```text
+.
+├── README.md
+├── arm/
+│   ├── Dockerfile
+│   ├── build.sh
+│   └── start.sh
+├── amd64/
+│   ├── Dockerfile
+│   ├── build.sh
+│   └── start.sh
+└── scripts/
+    └── linux-pbr/
+```
+
+ARMv7 and AMD64 have separate build directories. ARM64 is planned.
+
+Each image contains:
+
+* amneziawg-go
+* amneziawg-tools (`awg`, `awg-quick`)
+* startup script (`start.sh`)
+
+## Build the Image
 
 Choose the build directory from the repository root:
 
@@ -455,21 +732,7 @@ Each script loads the image into the local Docker image store. It does not publi
 | `arm/` | `linux/arm/v7` | `vbsdelnik/amneziawg-client-arm:latest` |
 | `amd64/` | `linux/amd64` | `vbsdelnik/amneziawg-client-amd64:latest` |
 
-Docker Desktop supports building these platforms through emulation. On other Docker installations, building for a different CPU architecture requires a suitable builder or emulation.
-
-To publish a tested build to Docker Hub, choose its image:
-
-```bash
-# ARMv7
-docker push vbsdelnik/amneziawg-client-arm:latest
-
-# AMD64
-docker push vbsdelnik/amneziawg-client-amd64:latest
-```
-
----
-
-# Verify Build
+## Verify the Build
 
 List images:
 
@@ -537,95 +800,27 @@ docker run --rm \
 
 `amneziawg-go --version` displays `0.0.20250522` because the version string in the upstream source code is outdated. This image is built from tag `v3.1.20260828`, as specified by `AWG_GO_REF` in the Dockerfile.
 
-For AMD64, the image build and binary startup have been verified. VPN connectivity and LAN forwarding still require testing with your actual configuration.
+These checks verify the image architecture and binary startup. Test VPN connectivity and LAN forwarding with your actual configuration.
+
+## Publish the Image — Optional
+
+To publish a tested build to Docker Hub, choose its image:
+
+```bash
+# ARMv7
+docker push vbsdelnik/amneziawg-client-arm:latest
+
+# AMD64
+docker push vbsdelnik/amneziawg-client-amd64:latest
+```
+
+These commands publish to the project repositories and require access to them. For your own Docker Hub repository, change the image tag before publishing.
 
 ---
 
-# Run Locally
+# Updating
 
-The examples below use the ARMv7 image. For AMD64, replace the image name with `vbsdelnik/amneziawg-client-amd64:latest`. Both images use the same configuration path, environment variables and startup logic.
-
-Local startup requires Linux Docker with `/dev/net/tun` and support for the selected image architecture, either native or through emulation. Run it from the directory containing your actual `awg.conf`; this file is not included in the repository.
-
-The local startup example has not been independently verified. The current `start.sh` deletes `/etc/resolv.conf`, which can fail when Docker mounts that file. The RouterOS startup behavior should not be assumed to work unchanged in standard Docker.
-
-```bash
-docker run --rm -it \
-  --cap-add NET_ADMIN \
-  --device /dev/net/tun \
-  -v "$(pwd)/awg.conf:/config/awg.conf:ro" \
-  vbsdelnik/amneziawg-client-arm:latest
-```
-
----
-
-# RouterOS Container Limitations
-
-RouterOS container subsystem may not provide full netfilter support.
-
-The following may be unavailable:
-
-* iptables
-* iptables-restore
-* nftables
-
-Because of this, routed networking is preferred over NAT.
-
----
-
-# Troubleshooting
-
-Run the following Linux commands inside the client container, not on the VPS or in the RouterOS terminal. On RouterOS, identify the container and open its shell (replace index `0` as needed):
-
-```routeros
-/container/print
-/container/shell 0
-```
-
-Check handshake:
-
-```bash
-awg show
-```
-
-Check interface:
-
-```bash
-ip addr show awg
-```
-
-Check routing:
-
-```bash
-ip route
-```
-
-Check connectivity:
-
-```bash
-ping 1.1.1.1
-```
-
-For logs, return to the RouterOS terminal. Enable logging for the correct container if needed (replace index `0`):
-
-```routeros
-/container/set 0 logging=yes
-/log/print where topics~"container"
-```
-
----
-
-# Runtime Checks
-
-At startup, `start.sh` waits up to `HANDSHAKE_TIMEOUT` seconds for a nonzero `latest-handshakes` timestamp on `awg`. Zero means that no successful handshake has been recorded for that peer since its creation. A timeout produces a warning; the subsequent connectivity ping must succeed or the startup script exits.
-
-The Docker HEALTHCHECK checks the same interface every 30 seconds. It succeeds when at least one peer has a nonzero handshake timestamp. This confirms a past handshake, not current connectivity: the timestamp remains nonzero after a connection is lost.
-
-After startup, the script waits with `tail -f /dev/null`; it does not periodically ping or supervise the VPN process. Docker marks a failed HEALTHCHECK as unhealthy but does not restart the container solely for that status. Do not assume RouterOS executes Docker HEALTHCHECK metadata; verify monitoring and restart behavior on the deployed RouterOS version.
-
----
-
-# Upgrading
+## RouterOS
 
 Updating an image on a Docker workstation does not update the container installed on MikroTik. Restarting the RouterOS container alone also does not download a new image.
 
@@ -638,13 +833,17 @@ To upgrade on RouterOS:
 
 For version-specific update commands, see the [MikroTik Container documentation](https://help.mikrotik.com/docs/spaces/ROS/pages/84901929/Container).
 
-To download the latest image on a Docker workstation:
+## Linux Docker
+
+To download the latest AMD64 image:
 
 ```bash
-docker pull --platform linux/arm/v7 vbsdelnik/amneziawg-client-arm:latest
+docker pull vbsdelnik/amneziawg-client-amd64:latest
 ```
 
-This downloads the image only; an existing Docker container must be recreated to use it. Image publication is described in [Building](#building).
+This downloads the image only; an existing Docker container must be recreated to use it. Keep the external client configuration and existing container settings.
+
+Updating the Linux setup scripts is separate from updating the image. See the [Linux setup instructions](scripts/linux-pbr/README.md#change-settings-upgrade-or-disable).
 
 ---
 
@@ -654,6 +853,5 @@ This repository contains Docker build and deployment files only.
 
 AmneziaWG components are distributed under their respective licenses:
 
-* https://github.com/amnezia-vpn/amneziawg-go
-* https://github.com/amnezia-vpn/amneziawg-tools
-
+* [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go)
+* [amneziawg-tools](https://github.com/amnezia-vpn/amneziawg-tools)
